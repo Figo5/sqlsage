@@ -24,7 +24,7 @@ import type {
 
 export type ModuleId = 'M2' | 'M3' | 'M4' | 'M5' | 'M6';
 
-/** Optional implementations, injected as they come online. */
+/** Optional implementations for embedding, testing, and custom pipelines. */
 export interface Modules {
   explainSemantics?: (ir: ReturnType<typeof bindQuery>, catalog: Catalog) => SemanticExplanation;
   predictExecution?: (ir: ReturnType<typeof bindQuery>, catalog: Catalog) => ExecutionAnalysis;
@@ -50,7 +50,7 @@ export const DEFAULT_MODULES: Required<Modules> = {
 
 /**
  * A semantics placeholder that states its own absence rather than inventing an
- * explanation. M7 must render this without claiming the query was understood.
+ * explanation. Reporters must preserve that uncertainty.
  */
 function absentSemantics(): SemanticExplanation {
   return {

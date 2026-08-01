@@ -1,5 +1,5 @@
 /**
- * Verification harness. Answers the two questions a critic cannot answer by
+ * Verification harness. Answers the two questions static analysis cannot answer by
  * reading code:
  *
  *   1. Does this proposed index actually change the plan, and by how much?

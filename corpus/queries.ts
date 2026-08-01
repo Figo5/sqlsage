@@ -3,7 +3,7 @@
  *
  * Every query here is one a real team has shipped and later had to fix. Each
  * carries a distinct, expert-known failure mode. `whatExpertsSay` is NOT the
- * answer key handed to builders — it is the axis the critic checks coverage
+ * answer key used by the acceptance suite — it is the axis that checks coverage
  * along, and it deliberately understates the full expert analysis.
  */
 
@@ -11,7 +11,7 @@ export interface CorpusQuery {
   id: string;
   title: string;
   sql: string;
-  /** The headline defect. Critics verify we find it; finding only this is a C grade. */
+  /** The headline defect that the acceptance suite must detect. */
   primaryIssue: string;
   /** Secondary issues an expert would also raise. */
   secondaryIssues: string[];

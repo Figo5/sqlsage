@@ -1,5 +1,5 @@
 /**
- * Collects the ground truth every critic judges against:
+ * Collects the ground truth used by the acceptance suite:
  *   - the frozen catalog (schema + pg_stats)
  *   - a real EXPLAIN (ANALYZE, BUFFERS, VERBOSE, SETTINGS) for each corpus query
  *

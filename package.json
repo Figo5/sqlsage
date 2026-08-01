@@ -2,8 +2,25 @@
   "name": "sqlsage",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
-  "description": "SQL query explainer and optimizer at senior-DBA level",
+  "description": "Correctness-first PostgreSQL query explainer and optimizer CLI",
+  "license": "MIT",
+  "author": "Figo5",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Figo5/sqlsage.git"
+  },
+  "homepage": "https://github.com/Figo5/sqlsage#readme",
+  "bugs": {
+    "url": "https://github.com/Figo5/sqlsage/issues"
+  },
+  "keywords": [
+    "postgresql",
+    "sql",
+    "query-optimizer",
+    "explain",
+    "database",
+    "cli"
+  ],
   "bin": {
     "sqlsage": "./dist/cli.js"
   },
@@ -13,8 +30,8 @@
   "files": [
     "dist",
     "corpus/catalog.json",
-    "docs/CLI-FIRST-PLAN.md",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=24.0.0"
@@ -27,7 +44,8 @@
     "eval": "node eval/run.ts",
     "groundtruth": "node eval/collect-groundtruth.ts",
     "test": "node --test src/*.test.ts src/**/*.test.ts",
-    "test:install": "node eval/install-smoke.ts"
+    "test:install": "node eval/install-smoke.ts",
+    "check": "npm test && node eval/dump-ir.ts --check && node eval/run.ts && npm run build"
   },
   "dependencies": {
     "pgsql-ast-parser": "^12.0.2",

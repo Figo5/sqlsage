@@ -1,7 +1,7 @@
 /**
  * SQLSage shared contracts.
  *
- * These types are the interface between modules. Builders own the *inside* of
+ * These types are the interface between modules. Modules own their implementation;
  * their module; nobody edits this file without it being a cross-module decision.
  *
  * Pipeline:
@@ -242,7 +242,7 @@ export interface QueryIR {
   blocks: QueryBlockIR[];
   /** Id of the outermost block. */
   rootBlockId: string;
-  /** Everything binding could not resolve — critics read this first. */
+  /** Everything binding could not resolve — consumers should inspect this first. */
   bindingErrors: Array<{ message: string; sqlFragment?: string; severity: 'warn' | 'error' }>;
 }
 

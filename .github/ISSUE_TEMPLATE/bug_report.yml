@@ -1,0 +1,40 @@
+name: Bug report
+description: Report incorrect analysis, a crash, or a CLI problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove credentials and sensitive SQL/data before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: SQLSage version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Input mode
+      options:
+        - Catalog JSON
+        - Schema SQL
+        - Saved plan/evidence bundle
+        - Live PostgreSQL
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include the command, sanitized input shape, output, and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      render: shell
+    validations:
+      required: true

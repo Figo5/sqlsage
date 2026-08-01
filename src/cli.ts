@@ -44,7 +44,7 @@ Output and safety:
 Safety: --analyze executes the SELECT. A read-only transaction cannot prevent external
 side effects inside an unfamiliar user-defined volatile function; review the query first.
 
-Examples bundled for evaluation:
+Bundled examples:
   sqlsage list
   sqlsage analyze --corpus q05 --format text
 
