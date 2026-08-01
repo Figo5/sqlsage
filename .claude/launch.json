@@ -1,0 +1,12 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "sqlsage-progress",
+			"runtimeExecutable": "node",
+			"runtimeArgs": ["progress/serve.mjs"],
+			"port": 5310,
+			"autoPort": false
+		}
+	]
+}

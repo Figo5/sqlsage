@@ -1,0 +1,80 @@
+-- q04-deep-offset-pagination: Deep OFFSET pagination over the orders feed
+-- median execution: 392.5 ms (runs: 375, 393, 411 ms), planning: 0.13 ms
+-- rows returned (complete result): 20
+
+SELECT o.order_id, o.created_at, o.total_cents, c.email
+FROM shop.orders o
+JOIN shop.customers c ON c.customer_id = o.customer_id
+WHERE o.status = 'complete'
+ORDER BY o.created_at DESC, o.order_id DESC
+LIMIT 20 OFFSET 100000;
+
+Limit  (cost=113023.13..113025.46 rows=20 width=46) (actual time=398.117..403.843 rows=20 loops=1)
+  Output: o.order_id, o.created_at, o.total_cents, c.email
+  Buffers: shared hit=23217
+  ->  Gather Merge  (cost=101355.65..266632.05 rows=1416556 width=46) (actual time=383.772..397.678 rows=100020 loops=1)
+        Output: o.order_id, o.created_at, o.total_cents, c.email
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=23217
+        ->  Sort  (cost=100355.63..102126.32 rows=708278 width=46) (actual time=370.362..371.453 rows=33858 loops=3)
+              Output: o.order_id, o.created_at, o.total_cents, c.email
+              Sort Key: o.created_at DESC, o.order_id DESC
+              Sort Method: top-N heapsort  Memory: 20210kB
+              Buffers: shared hit=23217
+              Worker 0:  actual time=361.322..362.475 rows=34882 loops=1
+                Sort Method: top-N heapsort  Memory: 20210kB
+                JIT:
+                  Functions: 13
+                  Options: Inlining false, Optimization false, Expressions true, Deforming true
+                  Timing: Generation 0.285 ms, Inlining 0.000 ms, Optimization 0.189 ms, Emission 3.903 ms, Total 4.377 ms
+                Buffers: shared hit=6961
+              Worker 1:  actual time=366.113..367.227 rows=33514 loops=1
+                Sort Method: top-N heapsort  Memory: 20210kB
+                JIT:
+                  Functions: 13
+                  Options: Inlining false, Optimization false, Expressions true, Deforming true
+                  Timing: Generation 0.264 ms, Inlining 0.000 ms, Optimization 0.176 ms, Emission 4.315 ms, Total 4.756 ms
+                Buffers: shared hit=7382
+              ->  Parallel Hash Join  (cost=5086.06..37992.00 rows=708278 width=46) (actual time=19.680..235.682 rows=566667 loops=3)
+                    Output: o.order_id, o.created_at, o.total_cents, c.email
+                    Inner Unique: true
+                    Hash Cond: (o.customer_id = c.customer_id)
+                    Buffers: shared hit=23129
+                    Worker 0:  actual time=10.851..221.575 rows=545606 loops=1
+                      Buffers: shared hit=6917
+                    Worker 1:  actual time=15.442..236.997 rows=565477 loops=1
+                      Buffers: shared hit=7338
+                    ->  Parallel Seq Scan on shop.orders o  (cost=0.00..31046.67 rows=708278 width=32) (actual time=0.032..56.373 rows=566667 loops=3)
+                          Output: o.order_id, o.customer_id, o.status, o.created_at, o.shipped_at, o.total_cents, o.coupon_code
+                          Filter: (o.status = 'complete'::text)
+                          Rows Removed by Filter: 100000
+                          Buffers: shared hit=20630
+                          Worker 0:  actual time=0.033..54.878 rows=545606 loops=1
+                            Buffers: shared hit=6622
+                          Worker 1:  actual time=0.023..61.250 rows=565477 loops=1
+                            Buffers: shared hit=6861
+                    ->  Parallel Hash  (cost=3615.47..3615.47 rows=117647 width=30) (actual time=19.369..19.370 rows=66667 loops=3)
+                          Output: c.email, c.customer_id
+                          Buckets: 262144  Batches: 1  Memory Usage: 14624kB
+                          Buffers: shared hit=2439
+                          Worker 0:  actual time=10.750..10.750 rows=21654 loops=1
+                            Buffers: shared hit=265
+                          Worker 1:  actual time=15.373..15.373 rows=36654 loops=1
+                            Buffers: shared hit=447
+                          ->  Parallel Seq Scan on shop.customers c  (cost=0.00..3615.47 rows=117647 width=30) (actual time=2.856..7.743 rows=66667 loops=3)
+                                Output: c.email, c.customer_id
+                                Buffers: shared hit=2439
+                                Worker 0:  actual time=4.077..5.852 rows=21654 loops=1
+                                  Buffers: shared hit=265
+                                Worker 1:  actual time=4.482..7.498 rows=36654 loops=1
+                                  Buffers: shared hit=447
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning:
+  Buffers: shared hit=16
+Planning Time: 0.148 ms
+JIT:
+  Functions: 41
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.801 ms, Inlining 0.000 ms, Optimization 0.522 ms, Emission 11.724 ms, Total 13.047 ms
+Execution Time: 405.005 ms

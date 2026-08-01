@@ -1,0 +1,264 @@
+{
+  "id": "q07-left-join-demoted",
+  "sql": "SELECT c.customer_id, c.email, o.order_id, o.total_cents\nFROM shop.customers c\nLEFT JOIN shop.orders o ON o.customer_id = c.customer_id\nWHERE o.status = 'complete'\n  AND c.signup_date >= DATE '2024-01-01';",
+  "planJson": {
+    "Plan": {
+      "Node Type": "Gather",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 1000.43,
+      "Total Cost": 41983.58,
+      "Plan Rows": 149061,
+      "Plan Width": 46,
+      "Actual Startup Time": 0.154,
+      "Actual Total Time": 82.989,
+      "Actual Rows": 149000,
+      "Actual Loops": 1,
+      "Output": [
+        "c.customer_id",
+        "c.email",
+        "o.order_id",
+        "o.total_cents"
+      ],
+      "Workers Planned": 1,
+      "Workers Launched": 1,
+      "Single Copy": false,
+      "Shared Hit Blocks": 228640,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0,
+      "Plans": [
+        {
+          "Node Type": "Nested Loop",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Join Type": "Inner",
+          "Startup Cost": 0.43,
+          "Total Cost": 26077.48,
+          "Plan Rows": 87683,
+          "Plan Width": 46,
+          "Actual Startup Time": 0.042,
+          "Actual Total Time": 69.976,
+          "Actual Rows": 74500,
+          "Actual Loops": 2,
+          "Output": [
+            "c.customer_id",
+            "c.email",
+            "o.order_id",
+            "o.total_cents"
+          ],
+          "Inner Unique": false,
+          "Shared Hit Blocks": 228640,
+          "Shared Read Blocks": 0,
+          "Shared Dirtied Blocks": 0,
+          "Shared Written Blocks": 0,
+          "Local Hit Blocks": 0,
+          "Local Read Blocks": 0,
+          "Local Dirtied Blocks": 0,
+          "Local Written Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0,
+          "Workers": [
+            {
+              "Worker Number": 0,
+              "Actual Startup Time": 0.062,
+              "Actual Total Time": 69.022,
+              "Actual Rows": 70300,
+              "Actual Loops": 1,
+              "Shared Hit Blocks": 107915,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0
+            }
+          ],
+          "Plans": [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": true,
+              "Async Capable": false,
+              "Relation Name": "customers",
+              "Schema": "shop",
+              "Alias": "c",
+              "Startup Cost": 0,
+              "Total Cost": 3909.59,
+              "Plan Rows": 10316,
+              "Plan Width": 30,
+              "Actual Startup Time": 0.026,
+              "Actual Total Time": 5.717,
+              "Actual Rows": 8700,
+              "Actual Loops": 2,
+              "Output": [
+                "c.customer_id",
+                "c.email",
+                "c.full_name",
+                "c.country_code",
+                "c.signup_date",
+                "c.is_active",
+                "c.loyalty_tier",
+                "c.last_login_at"
+              ],
+              "Filter": "(c.signup_date >= '2024-01-01'::date)",
+              "Rows Removed by Filter": 91300,
+              "Shared Hit Blocks": 2439,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Workers": [
+                {
+                  "Worker Number": 0,
+                  "Actual Startup Time": 0.036,
+                  "Actual Total Time": 5.753,
+                  "Actual Rows": 8209,
+                  "Actual Loops": 1,
+                  "Shared Hit Blocks": 1197,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                }
+              ]
+            },
+            {
+              "Node Type": "Index Scan",
+              "Parent Relationship": "Inner",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Scan Direction": "Forward",
+              "Index Name": "idx_orders_customer_id",
+              "Relation Name": "orders",
+              "Schema": "shop",
+              "Alias": "o",
+              "Startup Cost": 0.43,
+              "Total Cost": 2.07,
+              "Plan Rows": 8,
+              "Plan Width": 24,
+              "Actual Startup Time": 0.002,
+              "Actual Total Time": 0.007,
+              "Actual Rows": 9,
+              "Actual Loops": 17400,
+              "Output": [
+                "o.order_id",
+                "o.customer_id",
+                "o.status",
+                "o.created_at",
+                "o.shipped_at",
+                "o.total_cents",
+                "o.coupon_code"
+              ],
+              "Index Cond": "(o.customer_id = c.customer_id)",
+              "Rows Removed by Index Recheck": 0,
+              "Filter": "(o.status = 'complete'::text)",
+              "Rows Removed by Filter": 1,
+              "Shared Hit Blocks": 226201,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Workers": [
+                {
+                  "Worker Number": 0,
+                  "Actual Startup Time": 0.002,
+                  "Actual Total Time": 0.007,
+                  "Actual Rows": 9,
+                  "Actual Loops": 8209,
+                  "Shared Hit Blocks": 106718,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Settings": {
+      "work_mem": "32MB",
+      "random_page_cost": "1.1"
+    },
+    "Planning": {
+      "Shared Hit Blocks": 16,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0
+    },
+    "Planning Time": 0.135,
+    "Triggers": [],
+    "Execution Time": 87.35
+  },
+  "planText": "Gather  (cost=1000.43..41983.58 rows=149061 width=46) (actual time=0.156..80.264 rows=149000 loops=1)\n  Output: c.customer_id, c.email, o.order_id, o.total_cents\n  Workers Planned: 1\n  Workers Launched: 1\n  Buffers: shared hit=228640\n  ->  Nested Loop  (cost=0.43..26077.48 rows=87683 width=46) (actual time=0.044..66.654 rows=74500 loops=2)\n        Output: c.customer_id, c.email, o.order_id, o.total_cents\n        Buffers: shared hit=228640\n        Worker 0:  actual time=0.064..65.412 rows=68780 loops=1\n          Buffers: shared hit=105655\n        ->  Parallel Seq Scan on shop.customers c  (cost=0.00..3909.59 rows=10316 width=30) (actual time=0.030..5.526 rows=8700 loops=2)\n              Output: c.customer_id, c.email, c.full_name, c.country_code, c.signup_date, c.is_active, c.loyalty_tier, c.last_login_at\n              Filter: (c.signup_date >= '2024-01-01'::date)\n              Rows Removed by Filter: 91300\n              Buffers: shared hit=2439\n              Worker 0:  actual time=0.042..5.611 rows=8035 loops=1\n                Buffers: shared hit=1199\n        ->  Index Scan using idx_orders_customer_id on shop.orders o  (cost=0.43..2.07 rows=8 width=24) (actual time=0.002..0.006 rows=9 loops=17400)\n              Output: o.order_id, o.customer_id, o.status, o.created_at, o.shipped_at, o.total_cents, o.coupon_code\n              Index Cond: (o.customer_id = c.customer_id)\n              Filter: (o.status = 'complete'::text)\n              Rows Removed by Filter: 1\n              Buffers: shared hit=226201\n              Worker 0:  actual time=0.002..0.007 rows=9 loops=8035\n                Buffers: shared hit=104456\nSettings: work_mem = '32MB', random_page_cost = '1.1'\nPlanning:\n  Buffers: shared hit=16\nPlanning Time: 0.130 ms\nExecution Time: 84.439 ms",
+  "executionMs": 87.35,
+  "planningMs": 0.135,
+  "medianMs": 88.201,
+  "runs": [
+    89.028,
+    88.201,
+    87.35
+  ],
+  "fingerprint": {
+    "rowCount": 149000,
+    "digest": "d999aeb1483a58b7",
+    "sample": [
+      {
+        "customer_id": "261",
+        "email": "user261@example.com",
+        "order_id": "196540",
+        "total_cents": "56020"
+      },
+      {
+        "customer_id": "261",
+        "email": "user261@example.com",
+        "order_id": "396540",
+        "total_cents": "156020"
+      },
+      {
+        "customer_id": "261",
+        "email": "user261@example.com",
+        "order_id": "596540",
+        "total_cents": "256020"
+      }
+    ]
+  }
+}

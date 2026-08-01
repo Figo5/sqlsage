@@ -1,0 +1,5 @@
+src/**/*.test.ts
+src/**/NOTES.md
+src/*.NOTES.md
+src/report/fixtures.ts
+src/db.ts

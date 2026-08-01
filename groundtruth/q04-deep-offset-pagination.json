@@ -1,0 +1,535 @@
+{
+  "id": "q04-deep-offset-pagination",
+  "sql": "SELECT o.order_id, o.created_at, o.total_cents, c.email\nFROM shop.orders o\nJOIN shop.customers c ON c.customer_id = o.customer_id\nWHERE o.status = 'complete'\nORDER BY o.created_at DESC, o.order_id DESC\nLIMIT 20 OFFSET 100000;",
+  "planJson": {
+    "Plan": {
+      "Node Type": "Limit",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 113023.13,
+      "Total Cost": 113025.46,
+      "Plan Rows": 20,
+      "Plan Width": 46,
+      "Actual Startup Time": 404.332,
+      "Actual Total Time": 409.712,
+      "Actual Rows": 20,
+      "Actual Loops": 1,
+      "Output": [
+        "o.order_id",
+        "o.created_at",
+        "o.total_cents",
+        "c.email"
+      ],
+      "Shared Hit Blocks": 23217,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0,
+      "Plans": [
+        {
+          "Node Type": "Gather Merge",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 101355.65,
+          "Total Cost": 266632.05,
+          "Plan Rows": 1416556,
+          "Plan Width": 46,
+          "Actual Startup Time": 389.78,
+          "Actual Total Time": 403.516,
+          "Actual Rows": 100020,
+          "Actual Loops": 1,
+          "Output": [
+            "o.order_id",
+            "o.created_at",
+            "o.total_cents",
+            "c.email"
+          ],
+          "Workers Planned": 2,
+          "Workers Launched": 2,
+          "Shared Hit Blocks": 23217,
+          "Shared Read Blocks": 0,
+          "Shared Dirtied Blocks": 0,
+          "Shared Written Blocks": 0,
+          "Local Hit Blocks": 0,
+          "Local Read Blocks": 0,
+          "Local Dirtied Blocks": 0,
+          "Local Written Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Sort",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 100355.63,
+              "Total Cost": 102126.32,
+              "Plan Rows": 708278,
+              "Plan Width": 46,
+              "Actual Startup Time": 381.587,
+              "Actual Total Time": 382.656,
+              "Actual Rows": 33880,
+              "Actual Loops": 3,
+              "Output": [
+                "o.order_id",
+                "o.created_at",
+                "o.total_cents",
+                "c.email"
+              ],
+              "Sort Key": [
+                "o.created_at DESC",
+                "o.order_id DESC"
+              ],
+              "Sort Method": "top-N heapsort",
+              "Sort Space Used": 20210,
+              "Sort Space Type": "Memory",
+              "Shared Hit Blocks": 23217,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Workers": [
+                {
+                  "Worker Number": 0,
+                  "Actual Startup Time": 378.198,
+                  "Actual Total Time": 379.246,
+                  "Actual Rows": 34198,
+                  "Actual Loops": 1,
+                  "Sort Method": "top-N heapsort",
+                  "Sort Space Used": 20210,
+                  "Sort Space Type": "Memory",
+                  "JIT": {
+                    "Functions": 13,
+                    "Options": {
+                      "Inlining": false,
+                      "Optimization": false,
+                      "Expressions": true,
+                      "Deforming": true
+                    },
+                    "Timing": {
+                      "Generation": 0.323,
+                      "Inlining": 0,
+                      "Optimization": 0.149,
+                      "Emission": 3.706,
+                      "Total": 4.178
+                    }
+                  },
+                  "Shared Hit Blocks": 7444,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                },
+                {
+                  "Worker Number": 1,
+                  "Actual Startup Time": 377.23,
+                  "Actual Total Time": 378.212,
+                  "Actual Rows": 30322,
+                  "Actual Loops": 1,
+                  "Sort Method": "top-N heapsort",
+                  "Sort Space Used": 20210,
+                  "Sort Space Type": "Memory",
+                  "JIT": {
+                    "Functions": 13,
+                    "Options": {
+                      "Inlining": false,
+                      "Optimization": false,
+                      "Expressions": true,
+                      "Deforming": true
+                    },
+                    "Timing": {
+                      "Generation": 0.267,
+                      "Inlining": 0,
+                      "Optimization": 0.176,
+                      "Emission": 3.986,
+                      "Total": 4.429
+                    }
+                  },
+                  "Shared Hit Blocks": 7333,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                }
+              ],
+              "Plans": [
+                {
+                  "Node Type": "Hash Join",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": true,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 5086.06,
+                  "Total Cost": 37992,
+                  "Plan Rows": 708278,
+                  "Plan Width": 46,
+                  "Actual Startup Time": 17.579,
+                  "Actual Total Time": 240.59,
+                  "Actual Rows": 566667,
+                  "Actual Loops": 3,
+                  "Output": [
+                    "o.order_id",
+                    "o.created_at",
+                    "o.total_cents",
+                    "c.email"
+                  ],
+                  "Inner Unique": true,
+                  "Hash Cond": "(o.customer_id = c.customer_id)",
+                  "Shared Hit Blocks": 23129,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0,
+                  "Workers": [
+                    {
+                      "Worker Number": 0,
+                      "Actual Startup Time": 13.761,
+                      "Actual Total Time": 236.037,
+                      "Actual Rows": 564762,
+                      "Actual Loops": 1,
+                      "Shared Hit Blocks": 7400,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0
+                    },
+                    {
+                      "Worker Number": 1,
+                      "Actual Startup Time": 13.818,
+                      "Actual Total Time": 237.709,
+                      "Actual Rows": 556808,
+                      "Actual Loops": 1,
+                      "Shared Hit Blocks": 7289,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0
+                    }
+                  ],
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": true,
+                      "Async Capable": false,
+                      "Relation Name": "orders",
+                      "Schema": "shop",
+                      "Alias": "o",
+                      "Startup Cost": 0,
+                      "Total Cost": 31046.67,
+                      "Plan Rows": 708278,
+                      "Plan Width": 32,
+                      "Actual Startup Time": 0.023,
+                      "Actual Total Time": 57.778,
+                      "Actual Rows": 566667,
+                      "Actual Loops": 3,
+                      "Output": [
+                        "o.order_id",
+                        "o.customer_id",
+                        "o.status",
+                        "o.created_at",
+                        "o.shipped_at",
+                        "o.total_cents",
+                        "o.coupon_code"
+                      ],
+                      "Filter": "(o.status = 'complete'::text)",
+                      "Rows Removed by Filter": 100000,
+                      "Shared Hit Blocks": 20630,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0,
+                      "Workers": [
+                        {
+                          "Worker Number": 0,
+                          "Actual Startup Time": 0.028,
+                          "Actual Total Time": 58.264,
+                          "Actual Rows": 564762,
+                          "Actual Loops": 1,
+                          "Shared Hit Blocks": 6854,
+                          "Shared Read Blocks": 0,
+                          "Shared Dirtied Blocks": 0,
+                          "Shared Written Blocks": 0,
+                          "Local Hit Blocks": 0,
+                          "Local Read Blocks": 0,
+                          "Local Dirtied Blocks": 0,
+                          "Local Written Blocks": 0,
+                          "Temp Read Blocks": 0,
+                          "Temp Written Blocks": 0
+                        },
+                        {
+                          "Worker Number": 1,
+                          "Actual Startup Time": 0.025,
+                          "Actual Total Time": 61.77,
+                          "Actual Rows": 556808,
+                          "Actual Loops": 1,
+                          "Shared Hit Blocks": 6757,
+                          "Shared Read Blocks": 0,
+                          "Shared Dirtied Blocks": 0,
+                          "Shared Written Blocks": 0,
+                          "Local Hit Blocks": 0,
+                          "Local Read Blocks": 0,
+                          "Local Dirtied Blocks": 0,
+                          "Local Written Blocks": 0,
+                          "Temp Read Blocks": 0,
+                          "Temp Written Blocks": 0
+                        }
+                      ]
+                    },
+                    {
+                      "Node Type": "Hash",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": true,
+                      "Async Capable": false,
+                      "Startup Cost": 3615.47,
+                      "Total Cost": 3615.47,
+                      "Plan Rows": 117647,
+                      "Plan Width": 30,
+                      "Actual Startup Time": 17.262,
+                      "Actual Total Time": 17.263,
+                      "Actual Rows": 66667,
+                      "Actual Loops": 3,
+                      "Output": [
+                        "c.email",
+                        "c.customer_id"
+                      ],
+                      "Hash Buckets": 262144,
+                      "Original Hash Buckets": 262144,
+                      "Hash Batches": 1,
+                      "Original Hash Batches": 1,
+                      "Peak Memory Usage": 14624,
+                      "Shared Hit Blocks": 2439,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0,
+                      "Workers": [
+                        {
+                          "Worker Number": 0,
+                          "Actual Startup Time": 13.694,
+                          "Actual Total Time": 13.695,
+                          "Actual Rows": 42312,
+                          "Actual Loops": 1,
+                          "Shared Hit Blocks": 516,
+                          "Shared Read Blocks": 0,
+                          "Shared Dirtied Blocks": 0,
+                          "Shared Written Blocks": 0,
+                          "Local Hit Blocks": 0,
+                          "Local Read Blocks": 0,
+                          "Local Dirtied Blocks": 0,
+                          "Local Written Blocks": 0,
+                          "Temp Read Blocks": 0,
+                          "Temp Written Blocks": 0
+                        },
+                        {
+                          "Worker Number": 1,
+                          "Actual Startup Time": 13.719,
+                          "Actual Total Time": 13.719,
+                          "Actual Rows": 41088,
+                          "Actual Loops": 1,
+                          "Shared Hit Blocks": 502,
+                          "Shared Read Blocks": 0,
+                          "Shared Dirtied Blocks": 0,
+                          "Shared Written Blocks": 0,
+                          "Local Hit Blocks": 0,
+                          "Local Read Blocks": 0,
+                          "Local Dirtied Blocks": 0,
+                          "Local Written Blocks": 0,
+                          "Temp Read Blocks": 0,
+                          "Temp Written Blocks": 0
+                        }
+                      ],
+                      "Plans": [
+                        {
+                          "Node Type": "Seq Scan",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": true,
+                          "Async Capable": false,
+                          "Relation Name": "customers",
+                          "Schema": "shop",
+                          "Alias": "c",
+                          "Startup Cost": 0,
+                          "Total Cost": 3615.47,
+                          "Plan Rows": 117647,
+                          "Plan Width": 30,
+                          "Actual Startup Time": 2.668,
+                          "Actual Total Time": 7.206,
+                          "Actual Rows": 66667,
+                          "Actual Loops": 3,
+                          "Output": [
+                            "c.email",
+                            "c.customer_id"
+                          ],
+                          "Shared Hit Blocks": 2439,
+                          "Shared Read Blocks": 0,
+                          "Shared Dirtied Blocks": 0,
+                          "Shared Written Blocks": 0,
+                          "Local Hit Blocks": 0,
+                          "Local Read Blocks": 0,
+                          "Local Dirtied Blocks": 0,
+                          "Local Written Blocks": 0,
+                          "Temp Read Blocks": 0,
+                          "Temp Written Blocks": 0,
+                          "Workers": [
+                            {
+                              "Worker Number": 0,
+                              "Actual Startup Time": 3.843,
+                              "Actual Total Time": 7.053,
+                              "Actual Rows": 42312,
+                              "Actual Loops": 1,
+                              "Shared Hit Blocks": 516,
+                              "Shared Read Blocks": 0,
+                              "Shared Dirtied Blocks": 0,
+                              "Shared Written Blocks": 0,
+                              "Local Hit Blocks": 0,
+                              "Local Read Blocks": 0,
+                              "Local Dirtied Blocks": 0,
+                              "Local Written Blocks": 0,
+                              "Temp Read Blocks": 0,
+                              "Temp Written Blocks": 0
+                            },
+                            {
+                              "Worker Number": 1,
+                              "Actual Startup Time": 4.151,
+                              "Actual Total Time": 7.319,
+                              "Actual Rows": 41088,
+                              "Actual Loops": 1,
+                              "Shared Hit Blocks": 502,
+                              "Shared Read Blocks": 0,
+                              "Shared Dirtied Blocks": 0,
+                              "Shared Written Blocks": 0,
+                              "Local Hit Blocks": 0,
+                              "Local Read Blocks": 0,
+                              "Local Dirtied Blocks": 0,
+                              "Local Written Blocks": 0,
+                              "Temp Read Blocks": 0,
+                              "Temp Written Blocks": 0
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Settings": {
+      "work_mem": "32MB",
+      "random_page_cost": "1.1"
+    },
+    "Planning": {
+      "Shared Hit Blocks": 16,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0
+    },
+    "Planning Time": 0.134,
+    "Triggers": [],
+    "JIT": {
+      "Functions": 41,
+      "Options": {
+        "Inlining": false,
+        "Optimization": false,
+        "Expressions": true,
+        "Deforming": true
+      },
+      "Timing": {
+        "Generation": 0.824,
+        "Inlining": 0,
+        "Optimization": 0.526,
+        "Emission": 11.092,
+        "Total": 12.442
+      }
+    },
+    "Execution Time": 410.534
+  },
+  "planText": "Limit  (cost=113023.13..113025.46 rows=20 width=46) (actual time=398.117..403.843 rows=20 loops=1)\n  Output: o.order_id, o.created_at, o.total_cents, c.email\n  Buffers: shared hit=23217\n  ->  Gather Merge  (cost=101355.65..266632.05 rows=1416556 width=46) (actual time=383.772..397.678 rows=100020 loops=1)\n        Output: o.order_id, o.created_at, o.total_cents, c.email\n        Workers Planned: 2\n        Workers Launched: 2\n        Buffers: shared hit=23217\n        ->  Sort  (cost=100355.63..102126.32 rows=708278 width=46) (actual time=370.362..371.453 rows=33858 loops=3)\n              Output: o.order_id, o.created_at, o.total_cents, c.email\n              Sort Key: o.created_at DESC, o.order_id DESC\n              Sort Method: top-N heapsort  Memory: 20210kB\n              Buffers: shared hit=23217\n              Worker 0:  actual time=361.322..362.475 rows=34882 loops=1\n                Sort Method: top-N heapsort  Memory: 20210kB\n                JIT:\n                  Functions: 13\n                  Options: Inlining false, Optimization false, Expressions true, Deforming true\n                  Timing: Generation 0.285 ms, Inlining 0.000 ms, Optimization 0.189 ms, Emission 3.903 ms, Total 4.377 ms\n                Buffers: shared hit=6961\n              Worker 1:  actual time=366.113..367.227 rows=33514 loops=1\n                Sort Method: top-N heapsort  Memory: 20210kB\n                JIT:\n                  Functions: 13\n                  Options: Inlining false, Optimization false, Expressions true, Deforming true\n                  Timing: Generation 0.264 ms, Inlining 0.000 ms, Optimization 0.176 ms, Emission 4.315 ms, Total 4.756 ms\n                Buffers: shared hit=7382\n              ->  Parallel Hash Join  (cost=5086.06..37992.00 rows=708278 width=46) (actual time=19.680..235.682 rows=566667 loops=3)\n                    Output: o.order_id, o.created_at, o.total_cents, c.email\n                    Inner Unique: true\n                    Hash Cond: (o.customer_id = c.customer_id)\n                    Buffers: shared hit=23129\n                    Worker 0:  actual time=10.851..221.575 rows=545606 loops=1\n                      Buffers: shared hit=6917\n                    Worker 1:  actual time=15.442..236.997 rows=565477 loops=1\n                      Buffers: shared hit=7338\n                    ->  Parallel Seq Scan on shop.orders o  (cost=0.00..31046.67 rows=708278 width=32) (actual time=0.032..56.373 rows=566667 loops=3)\n                          Output: o.order_id, o.customer_id, o.status, o.created_at, o.shipped_at, o.total_cents, o.coupon_code\n                          Filter: (o.status = 'complete'::text)\n                          Rows Removed by Filter: 100000\n                          Buffers: shared hit=20630\n                          Worker 0:  actual time=0.033..54.878 rows=545606 loops=1\n                            Buffers: shared hit=6622\n                          Worker 1:  actual time=0.023..61.250 rows=565477 loops=1\n                            Buffers: shared hit=6861\n                    ->  Parallel Hash  (cost=3615.47..3615.47 rows=117647 width=30) (actual time=19.369..19.370 rows=66667 loops=3)\n                          Output: c.email, c.customer_id\n                          Buckets: 262144  Batches: 1  Memory Usage: 14624kB\n                          Buffers: shared hit=2439\n                          Worker 0:  actual time=10.750..10.750 rows=21654 loops=1\n                            Buffers: shared hit=265\n                          Worker 1:  actual time=15.373..15.373 rows=36654 loops=1\n                            Buffers: shared hit=447\n                          ->  Parallel Seq Scan on shop.customers c  (cost=0.00..3615.47 rows=117647 width=30) (actual time=2.856..7.743 rows=66667 loops=3)\n                                Output: c.email, c.customer_id\n                                Buffers: shared hit=2439\n                                Worker 0:  actual time=4.077..5.852 rows=21654 loops=1\n                                  Buffers: shared hit=265\n                                Worker 1:  actual time=4.482..7.498 rows=36654 loops=1\n                                  Buffers: shared hit=447\nSettings: work_mem = '32MB', random_page_cost = '1.1'\nPlanning:\n  Buffers: shared hit=16\nPlanning Time: 0.148 ms\nJIT:\n  Functions: 41\n  Options: Inlining false, Optimization false, Expressions true, Deforming true\n  Timing: Generation 0.801 ms, Inlining 0.000 ms, Optimization 0.522 ms, Emission 11.724 ms, Total 13.047 ms\nExecution Time: 405.005 ms",
+  "executionMs": 410.534,
+  "planningMs": 0.134,
+  "medianMs": 392.544,
+  "runs": [
+    375.329,
+    392.544,
+    410.534
+  ],
+  "fingerprint": {
+    "rowCount": 20,
+    "digest": "556e5a957a758449",
+    "sample": [
+      {
+        "order_id": "1882359",
+        "created_at": "2025-10-20T23:14:33.000Z",
+        "total_cents": "471667",
+        "email": "user922@example.com"
+      },
+      {
+        "order_id": "1882358",
+        "created_at": "2025-10-20T23:13:46.000Z",
+        "total_cents": "471654",
+        "email": "user193003@example.com"
+      },
+      {
+        "order_id": "1882357",
+        "created_at": "2025-10-20T23:12:59.000Z",
+        "total_cents": "471641",
+        "email": "user185084@example.com"
+      }
+    ]
+  }
+}

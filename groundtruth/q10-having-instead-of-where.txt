@@ -1,0 +1,29 @@
+-- q10-having-instead-of-where: Aggregate with a row filter placed in HAVING
+-- median execution: 6.9 ms (runs: 8, 7, 7 ms), planning: 0.03 ms
+-- rows returned (complete result): 999
+
+SELECT o.customer_id, count(*) AS order_count, sum(o.total_cents) AS revenue
+FROM shop.orders o
+GROUP BY o.customer_id
+HAVING count(*) > 5
+   AND o.customer_id < 1000;
+
+HashAggregate  (cost=8479.58..8622.85 rows=3184 width=48) (actual time=6.226..6.372 rows=999 loops=1)
+  Output: customer_id, count(*), sum(total_cents)
+  Group Key: o.customer_id
+  Filter: (count(*) > 5)
+  Batches: 1  Memory Usage: 657kB
+  Buffers: shared hit=10001
+  ->  Bitmap Heap Scan on shop.orders o  (cost=89.28..8406.38 rows=9761 width=16) (actual time=1.295..5.150 rows=9990 loops=1)
+        Output: order_id, customer_id, status, created_at, shipped_at, total_cents, coupon_code
+        Recheck Cond: (o.customer_id < 1000)
+        Heap Blocks: exact=9987
+        Buffers: shared hit=10001
+        ->  Bitmap Index Scan on idx_orders_customer_id  (cost=0.00..86.83 rows=9761 width=0) (actual time=0.476..0.476 rows=9990 loops=1)
+              Index Cond: (o.customer_id < 1000)
+              Buffers: shared hit=14
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.052 ms
+Execution Time: 6.415 ms

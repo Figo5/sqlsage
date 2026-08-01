@@ -1,0 +1,222 @@
+{
+  "id": "q05-not-in-nullable",
+  "sql": "SELECT c.customer_id, c.email\nFROM shop.customers c\nWHERE c.customer_id NOT IN (\n    SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout'\n);",
+  "planJson": {
+    "Plan": {
+      "Node Type": "Seq Scan",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "customers",
+      "Schema": "shop",
+      "Alias": "c",
+      "Startup Cost": 116949.52,
+      "Total Cost": 121888.52,
+      "Plan Rows": 100000,
+      "Plan Width": 30,
+      "Actual Startup Time": 148.194,
+      "Actual Total Time": 148.24,
+      "Actual Rows": 0,
+      "Actual Loops": 1,
+      "Output": [
+        "c.customer_id",
+        "c.email"
+      ],
+      "Filter": "(NOT (hashed SubPlan 1))",
+      "Rows Removed by Filter": 200000,
+      "Shared Hit Blocks": 5954,
+      "Shared Read Blocks": 76826,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0,
+      "Plans": [
+        {
+          "Node Type": "Gather",
+          "Parent Relationship": "SubPlan",
+          "Subplan Name": "SubPlan 1",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 1000,
+          "Total Cost": 116716.18,
+          "Plan Rows": 93334,
+          "Plan Width": 8,
+          "Actual Startup Time": 0.201,
+          "Actual Total Time": 105.52,
+          "Actual Rows": 100000,
+          "Actual Loops": 1,
+          "Output": [
+            "e.customer_id"
+          ],
+          "Workers Planned": 2,
+          "Workers Launched": 2,
+          "Single Copy": false,
+          "Shared Hit Blocks": 3515,
+          "Shared Read Blocks": 76826,
+          "Shared Dirtied Blocks": 0,
+          "Shared Written Blocks": 0,
+          "Local Hit Blocks": 0,
+          "Local Read Blocks": 0,
+          "Local Dirtied Blocks": 0,
+          "Local Written Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": true,
+              "Async Capable": false,
+              "Relation Name": "events",
+              "Schema": "shop",
+              "Alias": "e",
+              "Startup Cost": 0,
+              "Total Cost": 106382.78,
+              "Plan Rows": 38889,
+              "Plan Width": 8,
+              "Actual Startup Time": 1.26,
+              "Actual Total Time": 105.219,
+              "Actual Rows": 33333,
+              "Actual Loops": 3,
+              "Output": [
+                "e.customer_id"
+              ],
+              "Filter": "(e.event_type = 'checkout'::text)",
+              "Rows Removed by Filter": 1633333,
+              "Shared Hit Blocks": 3515,
+              "Shared Read Blocks": 76826,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Workers": [
+                {
+                  "Worker Number": 0,
+                  "Actual Startup Time": 1.73,
+                  "Actual Total Time": 107.59,
+                  "Actual Rows": 33901,
+                  "Actual Loops": 1,
+                  "JIT": {
+                    "Functions": 4,
+                    "Options": {
+                      "Inlining": false,
+                      "Optimization": false,
+                      "Expressions": true,
+                      "Deforming": true
+                    },
+                    "Timing": {
+                      "Generation": 0.115,
+                      "Inlining": 0,
+                      "Optimization": 0.106,
+                      "Emission": 1.589,
+                      "Total": 1.81
+                    }
+                  },
+                  "Shared Hit Blocks": 1172,
+                  "Shared Read Blocks": 26074,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                },
+                {
+                  "Worker Number": 1,
+                  "Actual Startup Time": 1.943,
+                  "Actual Total Time": 107.678,
+                  "Actual Rows": 33799,
+                  "Actual Loops": 1,
+                  "JIT": {
+                    "Functions": 4,
+                    "Options": {
+                      "Inlining": false,
+                      "Optimization": false,
+                      "Expressions": true,
+                      "Deforming": true
+                    },
+                    "Timing": {
+                      "Generation": 0.117,
+                      "Inlining": 0,
+                      "Optimization": 0.111,
+                      "Emission": 1.799,
+                      "Total": 2.027
+                    }
+                  },
+                  "Shared Hit Blocks": 1189,
+                  "Shared Read Blocks": 25958,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Settings": {
+      "work_mem": "32MB",
+      "random_page_cost": "1.1"
+    },
+    "Planning": {
+      "Shared Hit Blocks": 0,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0
+    },
+    "Planning Time": 0.058,
+    "Triggers": [],
+    "JIT": {
+      "Functions": 27,
+      "Options": {
+        "Inlining": false,
+        "Optimization": false,
+        "Expressions": true,
+        "Deforming": true
+      },
+      "Timing": {
+        "Generation": 0.596,
+        "Inlining": 0,
+        "Optimization": 0.45,
+        "Emission": 7.278,
+        "Total": 8.325
+      }
+    },
+    "Execution Time": 148.579
+  },
+  "planText": "Seq Scan on shop.customers c  (cost=116949.52..121888.52 rows=100000 width=30) (actual time=140.993..141.050 rows=0 loops=1)\n  Output: c.customer_id, c.email\n  Filter: (NOT (hashed SubPlan 1))\n  Rows Removed by Filter: 200000\n  Buffers: shared hit=6050 read=76730\n  SubPlan 1\n    ->  Gather  (cost=1000.00..116716.18 rows=93334 width=8) (actual time=0.207..104.070 rows=100000 loops=1)\n          Output: e.customer_id\n          Workers Planned: 2\n          Workers Launched: 2\n          Buffers: shared hit=3611 read=76730\n          ->  Parallel Seq Scan on shop.events e  (cost=0.00..106382.78 rows=38889 width=8) (actual time=1.344..103.754 rows=33333 loops=3)\n                Output: e.customer_id\n                Filter: (e.event_type = 'checkout'::text)\n                Rows Removed by Filter: 1633333\n                Buffers: shared hit=3611 read=76730\n                Worker 0:  actual time=1.965..106.102 rows=33789 loops=1\n                  JIT:\n                    Functions: 4\n                    Options: Inlining false, Optimization false, Expressions true, Deforming true\n                    Timing: Generation 0.133 ms, Inlining 0.000 ms, Optimization 0.106 ms, Emission 1.818 ms, Total 2.057 ms\n                  Buffers: shared hit=1234 read=25911\n                Worker 1:  actual time=1.964..106.156 rows=33664 loops=1\n                  JIT:\n                    Functions: 4\n                    Options: Inlining false, Optimization false, Expressions true, Deforming true\n                    Timing: Generation 0.132 ms, Inlining 0.000 ms, Optimization 0.109 ms, Emission 1.818 ms, Total 2.059 ms\n                  Buffers: shared hit=1259 read=25796\nSettings: work_mem = '32MB', random_page_cost = '1.1'\nPlanning Time: 0.049 ms\nJIT:\n  Functions: 27\n  Options: Inlining false, Optimization false, Expressions true, Deforming true\n  Timing: Generation 0.549 ms, Inlining 0.000 ms, Optimization 0.432 ms, Emission 7.378 ms, Total 8.359 ms\nExecution Time: 141.304 ms",
+  "executionMs": 148.579,
+  "planningMs": 0.058,
+  "medianMs": 148.579,
+  "runs": [
+    152.501,
+    147.954,
+    148.579
+  ],
+  "fingerprint": {
+    "rowCount": 0,
+    "digest": "e3b0c44298fc1c14",
+    "sample": []
+  }
+}

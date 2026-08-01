@@ -1,0 +1,31 @@
+-- q11-top-n-per-group: Most recent order per customer via a correlated max()
+-- median execution: 6577.3 ms (runs: 6578, 6577, 6478 ms), planning: 0.09 ms
+-- rows returned (complete result): 200000
+
+SELECT o.customer_id, o.order_id, o.created_at, o.total_cents
+FROM shop.orders o
+WHERE o.created_at = (
+    SELECT max(o2.created_at) FROM shop.orders o2 WHERE o2.customer_id = o.customer_id
+)
+ORDER BY o.customer_id;
+
+Index Scan using idx_orders_customer_id on shop.orders o  (cost=0.43..25535052.73 rows=10000 width=32) (actual time=32.123..6855.426 rows=200000 loops=1)
+  Output: o.customer_id, o.order_id, o.created_at, o.total_cents
+  Filter: (o.created_at = (SubPlan 1))
+  Rows Removed by Filter: 1800000
+  Buffers: shared hit=28002341
+  SubPlan 1
+    ->  Aggregate  (cost=12.73..12.74 rows=1 width=8) (actual time=0.003..0.003 rows=1 loops=2000000)
+          Output: max(o2.created_at)
+          Buffers: shared hit=26000000
+          ->  Index Scan using idx_orders_customer_id on shop.orders o2  (cost=0.43..12.70 rows=10 width=8) (actual time=0.001..0.002 rows=10 loops=2000000)
+                Output: o2.order_id, o2.customer_id, o2.status, o2.created_at, o2.shipped_at, o2.total_cents, o2.coupon_code
+                Index Cond: (o2.customer_id = o.customer_id)
+                Buffers: shared hit=26000000
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning Time: 0.108 ms
+JIT:
+  Functions: 12
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+  Timing: Generation 0.460 ms, Inlining 3.769 ms, Optimization 14.910 ms, Emission 13.372 ms, Total 32.512 ms
+Execution Time: 6862.323 ms

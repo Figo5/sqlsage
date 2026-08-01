@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SQLSage — build/critique loop</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #fff; --ink: #1a1a19; --muted: #6b6b68;
+    --line: #e6e5e1; --accent: #b8531f; --ok: #2f7d4f; --warn: #b58500;
+    --bad: #b3402c; --idle: #a8a7a2;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1d1d22; --ink: #ececea; --muted: #9a9a96;
+      --line: #2e2e35; --accent: #e0824a; --ok: #5cc98c; --warn: #dfb040;
+      --bad: #e8705a; --idle: #55555e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 20px 60px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .round { font: 600 12px/1 var(--mono); background: var(--accent); color: #fff;
+           padding: 5px 9px; border-radius: 5px; letter-spacing: .04em; }
+  .sub { color: var(--muted); font-size: 13px; margin: 6px 0 22px; }
+  .headline { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+              border-radius: 7px; padding: 14px 16px; margin-bottom: 22px; font-size: 14px; }
+  .headline b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+                color: var(--muted); margin-bottom: 5px; font-weight: 600; }
+  .stats { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 24px; }
+  .stat .n { font: 600 19px/1.2 var(--mono); }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel);
+          border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .scroll { overflow-x: auto; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 13.5px; }
+  tr:last-child td { border-bottom: none; }
+  .mid { font: 600 12px/1 var(--mono); color: var(--muted); }
+  .mname { font-weight: 600; }
+  .pill { display: inline-block; font: 600 10.5px/1 var(--mono); padding: 4px 7px;
+          border-radius: 4px; letter-spacing: .04em; white-space: nowrap; }
+  .p-done { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  .p-run  { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .p-pend { background: color-mix(in srgb, var(--idle) 22%, transparent); color: var(--muted); }
+  .p-fail { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+  .score { font: 600 15px/1 var(--mono); }
+  .bar { height: 4px; border-radius: 2px; background: var(--line); margin-top: 5px; width: 78px; }
+  .bar i { display: block; height: 100%; border-radius: 2px; }
+  .gap { color: var(--muted); font-size: 12.5px; max-width: 380px; }
+  .events { margin-top: 26px; }
+  .events h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
+               color: var(--muted); margin: 0 0 10px; }
+  .ev { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px dotted var(--line); font-size: 13px; }
+  .ev time { font: 11px/1.5 var(--mono); color: var(--muted); flex: none; width: 62px; }
+  footer { margin-top: 30px; color: var(--muted); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: p 2s ease-in-out infinite; }
+  @keyframes p { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>SQLSage</h1>
+    <span class="round" id="round">—</span>
+  </header>
+  <div class="sub" id="sub">loading…</div>
+
+  <div class="headline"><b id="hl-label">Current focus</b><span id="headline">—</span></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr>
+      <th style="width:52px">Piece</th><th>What it does</th>
+      <th style="width:78px">Builder</th><th style="width:78px">Critic</th>
+      <th style="width:92px">Score</th><th>Biggest remaining gap</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  </div>
+
+  <div class="events"><h2>Log</h2><div id="events"></div></div>
+
+  <footer><span class="dot"></span><span id="foot">live · polls every 3s</span></footer>
+</div>
+
+<script>
+const PILL = { done:'p-done', running:'p-run', pending:'p-pend', failed:'p-fail', 'n/a':'p-pend' };
+function scoreColor(s) {
+  if (s === null || s === undefined) return 'var(--idle)';
+  if (s >= 85) return 'var(--ok)';
+  if (s >= 65) return 'var(--warn)';
+  return 'var(--bad)';
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+async function tick() {
+  let s;
+  try { s = await (await fetch('state.json?t=' + Date.now())).json(); }
+  catch { document.getElementById('foot').textContent = 'waiting for state.json…'; return; }
+
+  document.getElementById('round').textContent = 'ROUND ' + s.round;
+  document.getElementById('sub').textContent = s.subtitle ?? '';
+  document.getElementById('headline').textContent = s.headline ?? '—';
+  document.getElementById('hl-label').textContent = s.headlineLabel ?? 'Current focus';
+
+  document.getElementById('stats').innerHTML = (s.stats ?? [])
+    .map(x => `<div class="stat"><div class="n">${esc(x.value)}</div><div class="l">${esc(x.label)}</div></div>`)
+    .join('');
+
+  document.getElementById('rows').innerHTML = (s.modules ?? []).map(m => {
+    const sc = m.score;
+    const trend = (m.history ?? []).length > 1
+      ? ` <span style="color:var(--muted);font-size:11px">(${m.history.map(h=>h.score).join('→')})</span>` : '';
+    return `<tr>
+      <td class="mid">${esc(m.id)}</td>
+      <td><div class="mname">${esc(m.name)}</div></td>
+      <td><span class="pill ${PILL[m.builder]||'p-pend'}">${esc(m.builder)}</span></td>
+      <td><span class="pill ${PILL[m.critic]||'p-pend'}">${esc(m.critic)}</span></td>
+      <td><span class="score" style="color:${scoreColor(sc)}">${sc ?? '—'}${sc!=null?'<span style="font-size:10px;color:var(--muted)">/100</span>':''}</span>${trend}
+          <div class="bar"><i style="width:${sc ?? 0}%;background:${scoreColor(sc)}"></i></div></td>
+      <td class="gap">${esc(m.biggestGap ?? '')}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('events').innerHTML = (s.events ?? []).slice().reverse().slice(0, 40)
+    .map(e => `<div class="ev"><time>${esc(e.t)}</time><span>${esc(e.msg)}</span></div>`).join('');
+
+  document.getElementById('foot').textContent =
+    `${s.status ?? 'live'} · updated ${s.updatedAt ?? ''} · polls every 3s`;
+}
+tick(); setInterval(tick, 3000);
+</script>
+</body>
+</html>

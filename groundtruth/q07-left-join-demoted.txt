@@ -1,0 +1,40 @@
+-- q07-left-join-demoted: Customers and their complete orders, filtered in WHERE
+-- median execution: 88.2 ms (runs: 89, 88, 87 ms), planning: 0.14 ms
+-- rows returned (complete result): 149000
+
+SELECT c.customer_id, c.email, o.order_id, o.total_cents
+FROM shop.customers c
+LEFT JOIN shop.orders o ON o.customer_id = c.customer_id
+WHERE o.status = 'complete'
+  AND c.signup_date >= DATE '2024-01-01';
+
+Gather  (cost=1000.43..41983.58 rows=149061 width=46) (actual time=0.156..80.264 rows=149000 loops=1)
+  Output: c.customer_id, c.email, o.order_id, o.total_cents
+  Workers Planned: 1
+  Workers Launched: 1
+  Buffers: shared hit=228640
+  ->  Nested Loop  (cost=0.43..26077.48 rows=87683 width=46) (actual time=0.044..66.654 rows=74500 loops=2)
+        Output: c.customer_id, c.email, o.order_id, o.total_cents
+        Buffers: shared hit=228640
+        Worker 0:  actual time=0.064..65.412 rows=68780 loops=1
+          Buffers: shared hit=105655
+        ->  Parallel Seq Scan on shop.customers c  (cost=0.00..3909.59 rows=10316 width=30) (actual time=0.030..5.526 rows=8700 loops=2)
+              Output: c.customer_id, c.email, c.full_name, c.country_code, c.signup_date, c.is_active, c.loyalty_tier, c.last_login_at
+              Filter: (c.signup_date >= '2024-01-01'::date)
+              Rows Removed by Filter: 91300
+              Buffers: shared hit=2439
+              Worker 0:  actual time=0.042..5.611 rows=8035 loops=1
+                Buffers: shared hit=1199
+        ->  Index Scan using idx_orders_customer_id on shop.orders o  (cost=0.43..2.07 rows=8 width=24) (actual time=0.002..0.006 rows=9 loops=17400)
+              Output: o.order_id, o.customer_id, o.status, o.created_at, o.shipped_at, o.total_cents, o.coupon_code
+              Index Cond: (o.customer_id = c.customer_id)
+              Filter: (o.status = 'complete'::text)
+              Rows Removed by Filter: 1
+              Buffers: shared hit=226201
+              Worker 0:  actual time=0.002..0.007 rows=9 loops=8035
+                Buffers: shared hit=104456
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning:
+  Buffers: shared hit=16
+Planning Time: 0.130 ms
+Execution Time: 84.439 ms

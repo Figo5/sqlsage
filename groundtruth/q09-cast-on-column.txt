@@ -1,0 +1,50 @@
+-- q09-cast-on-column: Daily order counts with a cast applied to the indexed column
+-- median execution: 81.4 ms (runs: 81, 82, 79 ms), planning: 0.07 ms
+-- rows returned (complete result): 30
+
+SELECT o.created_at::date AS day, count(*) AS orders
+FROM shop.orders o
+WHERE o.created_at::date BETWEEN DATE '2024-06-01' AND DATE '2024-06-30'
+GROUP BY o.created_at::date
+ORDER BY day;
+
+Finalize GroupAggregate  (cost=38557.64..39769.60 rows=10000 width=12) (actual time=86.484..90.066 rows=30 loops=1)
+  Output: ((created_at)::date), count(*)
+  Group Key: ((o.created_at)::date)
+  Buffers: shared hit=20744
+  ->  Gather Merge  (cost=38557.64..39602.93 rows=8334 width=12) (actual time=86.464..90.051 rows=66 loops=1)
+        Output: ((created_at)::date), (PARTIAL count(*))
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=20744
+        ->  Partial GroupAggregate  (cost=37557.62..37640.96 rows=4167 width=12) (actual time=79.272..80.715 rows=22 loops=3)
+              Output: ((created_at)::date), PARTIAL count(*)
+              Group Key: ((o.created_at)::date)
+              Buffers: shared hit=20744
+              Worker 0:  actual time=76.439..77.856 rows=21 loops=1
+                Buffers: shared hit=6551
+              Worker 1:  actual time=76.406..77.660 rows=20 loops=1
+                Buffers: shared hit=6380
+              ->  Sort  (cost=37557.62..37568.04 rows=4167 width=4) (actual time=79.158..79.802 rows=18383 loops=3)
+                    Output: ((created_at)::date)
+                    Sort Key: ((o.created_at)::date)
+                    Sort Method: quicksort  Memory: 769kB
+                    Buffers: shared hit=20744
+                    Worker 0:  actual time=76.258..76.912 rows=18614 loops=1
+                      Sort Method: quicksort  Memory: 769kB
+                      Buffers: shared hit=6551
+                    Worker 1:  actual time=76.365..76.889 rows=16371 loops=1
+                      Sort Method: quicksort  Memory: 385kB
+                      Buffers: shared hit=6380
+                    ->  Parallel Seq Scan on shop.orders o  (cost=0.00..37307.08 rows=4167 width=4) (actual time=28.026..78.143 rows=18383 loops=3)
+                          Output: (created_at)::date
+                          Filter: (((o.created_at)::date >= '2024-06-01'::date) AND ((o.created_at)::date <= '2024-06-30'::date))
+                          Rows Removed by Filter: 648284
+                          Buffers: shared hit=20630
+                          Worker 0:  actual time=25.189..75.222 rows=18614 loops=1
+                            Buffers: shared hit=6494
+                          Worker 1:  actual time=25.204..75.323 rows=16371 loops=1
+                            Buffers: shared hit=6323
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning Time: 0.062 ms
+Execution Time: 90.092 ms

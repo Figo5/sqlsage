@@ -1,0 +1,45 @@
+-- q05-not-in-nullable: Customers with no events, via NOT IN on a nullable column
+-- median execution: 148.6 ms (runs: 153, 148, 149 ms), planning: 0.06 ms
+-- rows returned (complete result): 0
+
+SELECT c.customer_id, c.email
+FROM shop.customers c
+WHERE c.customer_id NOT IN (
+    SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout'
+);
+
+Seq Scan on shop.customers c  (cost=116949.52..121888.52 rows=100000 width=30) (actual time=140.993..141.050 rows=0 loops=1)
+  Output: c.customer_id, c.email
+  Filter: (NOT (hashed SubPlan 1))
+  Rows Removed by Filter: 200000
+  Buffers: shared hit=6050 read=76730
+  SubPlan 1
+    ->  Gather  (cost=1000.00..116716.18 rows=93334 width=8) (actual time=0.207..104.070 rows=100000 loops=1)
+          Output: e.customer_id
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=3611 read=76730
+          ->  Parallel Seq Scan on shop.events e  (cost=0.00..106382.78 rows=38889 width=8) (actual time=1.344..103.754 rows=33333 loops=3)
+                Output: e.customer_id
+                Filter: (e.event_type = 'checkout'::text)
+                Rows Removed by Filter: 1633333
+                Buffers: shared hit=3611 read=76730
+                Worker 0:  actual time=1.965..106.102 rows=33789 loops=1
+                  JIT:
+                    Functions: 4
+                    Options: Inlining false, Optimization false, Expressions true, Deforming true
+                    Timing: Generation 0.133 ms, Inlining 0.000 ms, Optimization 0.106 ms, Emission 1.818 ms, Total 2.057 ms
+                  Buffers: shared hit=1234 read=25911
+                Worker 1:  actual time=1.964..106.156 rows=33664 loops=1
+                  JIT:
+                    Functions: 4
+                    Options: Inlining false, Optimization false, Expressions true, Deforming true
+                    Timing: Generation 0.132 ms, Inlining 0.000 ms, Optimization 0.109 ms, Emission 1.818 ms, Total 2.059 ms
+                  Buffers: shared hit=1259 read=25796
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning Time: 0.049 ms
+JIT:
+  Functions: 27
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.549 ms, Inlining 0.000 ms, Optimization 0.432 ms, Emission 7.378 ms, Total 8.359 ms
+Execution Time: 141.304 ms

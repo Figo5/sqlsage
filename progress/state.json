@@ -1,0 +1,567 @@
+{
+  "round": 4,
+  "status": "CLI-first objective complete — release-ready 0.1.0 package",
+  "updatedAt": "2026-08-01 — bounded review blockers fixed; full release verification green",
+  "subtitle": "SQL query explainer & optimizer — CLI-first product build against PostgreSQL",
+  "headlineLabel": "CLI-first product route — release ready",
+  "headline": "SQLSage installs as a built command-line product and supports catalog JSON, schema SQL, saved plans, reusable evidence bundles, and safe live PostgreSQL planning with explicit read-only EXPLAIN ANALYZE opt-in. M1–M7 run by default; all 12 corpus workflows and named correctness/intent gates pass. The one bounded product review is complete and its three release blockers are fixed.",
+  "stats": [
+    {
+      "value": "13.2M",
+      "label": "rows seeded"
+    },
+    {
+      "value": "12",
+      "label": "corpus queries"
+    },
+    {
+      "value": "7",
+      "label": "pieces"
+    },
+    {
+      "value": "4",
+      "label": "CLI milestones"
+    },
+    {
+      "value": "5",
+      "label": "complete CLI workflows"
+    },
+    {
+      "value": "142",
+      "label": "product tests"
+    },
+    {
+      "value": "406",
+      "label": "M1 assertions"
+    }
+  ],
+  "modules": [
+    {
+      "id": "M0",
+      "name": "Ground-truth harness (Postgres + EXPLAIN ANALYZE + verifier)",
+      "builder": "done",
+      "critic": "n/a",
+      "score": null,
+      "biggestGap": "Clean recollection complete: 12/12 plans, full-result fingerprints (q07 149k; q11 200k), contract-valid PK/FK arrays, no errors or deprecation warnings.",
+      "history": []
+    },
+    {
+      "id": "M1",
+      "name": "Schema-bound query IR",
+      "builder": "implemented; reused by CLI-first pipeline",
+      "critic": "bounded product review complete",
+      "score": 60,
+      "biggestGap": "No known open defect. Correlated LATERAL now mirrors the equivalent plain join, server-verified in reports/round4/probe-lateral.ts; comma joins fixed and covered earlier. NEVER REVIEWED by any critic, and the fan-out work was hand-written and self-verified. Known limits to push on: correlation through an expression, two levels out, multi-relation lateral blocks, LEFT JOIN LATERAL.",
+      "history": [
+        61,
+        68,
+        60
+      ]
+    },
+    {
+      "id": "M2",
+      "name": "Plain-English semantic explainer",
+      "builder": "implemented and wired by default",
+      "critic": "bounded product review complete",
+      "score": null,
+      "biggestGap": "No known release blocker; semantics now covers all 12 corpus workflows and correctness/intent caveats.",
+      "history": []
+    },
+    {
+      "id": "M3",
+      "name": "Predicted execution analyzer",
+      "builder": "implemented; predicted and observed plan modes",
+      "critic": "bounded product review complete",
+      "score": null,
+      "biggestGap": "Offline behavior remains predicted; saved/live plans override access-path facts without claiming proposed speedups are measured.",
+      "history": []
+    },
+    {
+      "id": "M4",
+      "name": "Anti-pattern & sargability detector",
+      "builder": "implemented and structurally generalized",
+      "critic": "bounded product review complete",
+      "score": null,
+      "biggestGap": "Named q01/q05/q06/q07/q10 release gates pass; production rules do not import corpus IDs or stored ground truth.",
+      "history": []
+    },
+    {
+      "id": "M5",
+      "name": "Index recommender",
+      "builder": "implemented with conservative deployment advice",
+      "critic": "bounded product review complete",
+      "score": null,
+      "biggestGap": "Recommendations are unverified by default, use executable recognized DDL, and preserve exact rewrite dependencies.",
+      "history": []
+    },
+    {
+      "id": "M6",
+      "name": "Query rewriter",
+      "builder": "implemented with equivalence classes and binding checks",
+      "critic": "bounded product review complete",
+      "score": null,
+      "biggestGap": "Eight conservative corpus rewrite families bind cleanly; q02/q07/q10/q12 deliberately receive no automatic rewrite.",
+      "history": []
+    },
+    {
+      "id": "M7",
+      "name": "Report renderer & prioritization",
+      "builder": "implemented; Round-8 line-boundary repair accepted",
+      "critic": "historical Round-8 review preserved; bounded product review complete",
+      "score": 51,
+      "biggestGap": "No new critic round is planned. Existing safety regressions remain green; the product review is limited to release-blocking CLI behavior.",
+      "history": [
+        46,
+        87,
+        75,
+        78,
+        84,
+        39,
+        50,
+        51
+      ]
+    }
+  ],
+  "events": [
+    {
+      "t": "step 1",
+      "msg": "Postgres 16.14 started; shop schema created with baseline indexes only (PKs + two FK indexes)."
+    },
+    {
+      "t": "step 2",
+      "msg": "Seeded 13.2M rows / 1.6 GB with deliberate skew: 85% complete orders, 92% bronze tier."
+    },
+    {
+      "t": "step 3",
+      "msg": "Corpus fixed at 12 queries, each carrying a distinct expert-known failure mode; 3 are correctness bugs, not slowness."
+    },
+    {
+      "t": "step 4",
+      "msg": "Ground truth captured: real EXPLAIN (ANALYZE, BUFFERS, VERBOSE, SETTINGS) + median-of-3 timings, 6 ms to 6.8 s."
+    },
+    {
+      "t": "step 5",
+      "msg": "Corpus corrected by evidence: q10's textbook 'move filter out of HAVING' advice is WRONG on PG 16 — the planner already pushes it to a Bitmap Index Scan. Kept as a false-positive trap."
+    },
+    {
+      "t": "step 6",
+      "msg": "Wave A launched: M1 (IR) and M7 (report renderer) building in parallel."
+    },
+    {
+      "t": "step 7",
+      "msg": "Critic protocol fixed: each critic writes its OWN reference analysis from the real plan BEFORE reading our output, then diffs. Anchoring is the failure mode of review."
+    },
+    {
+      "t": "step 8",
+      "msg": "Verification harness built and proven: applies candidate indexes/rewrites in a rolled-back transaction, measures median-of-3, compares result digests."
+    },
+    {
+      "t": "step 9",
+      "msg": "Harness result on q01 — index ALONE is 1.04x SLOWER (date_trunc blocks it; still seq-scans, 650k rows filtered). Rewrite + covering index: 3.94x faster, Index Only Scan, identical digest."
+    },
+    {
+      "t": "step 10",
+      "msg": "SEED BUG 1 found and fixed: NULL rule (g%5) shared a factor with checkout rule (g%50), so every checkout was anonymous and q05's demonstration was meaningless. Moved to g%7."
+    },
+    {
+      "t": "step 11",
+      "msg": "SEED BUG 2 found and fixed: utm_source (g%4) shared a factor with event_type (g%10), so q12 returned ZERO rows. Moved to (g%7)%4. Now 111,589 rows / 20,000 customers."
+    },
+    {
+      "t": "step 12",
+      "msg": "Correctness bugs quantified on real data: q05 NOT IN returns 0 rows vs 196,000 for NOT EXISTS; q06 over-reports revenue by exactly 3.0000x."
+    },
+    {
+      "t": "step 13",
+      "msg": "Session limit reached. HANDOFF.md written with environment rebuild steps, verified reference numbers, blockers, and the round-2 plan."
+    },
+    {
+      "t": "step 14",
+      "msg": "Codex resumed from the handoff, verified the database and progress server, and launched fresh M1/M7 builders plus a blind M1 critic."
+    },
+    {
+      "t": "step 15",
+      "msg": "Ground-truth refresh started for all 12 queries so q05/q12 plans and event statistics match the corrected 5M-row events table."
+    },
+    {
+      "t": "step 16",
+      "msg": "Ground truth refreshed successfully: all 12 real plans captured with no errors; q11 remains the slowest at 7.0s and q10 remains a 10ms no-speedup trap."
+    },
+    {
+      "t": "step 17",
+      "msg": "Harness audit found that fingerprints were capped at 5,000 rows, risking false equivalence. Full-result multiset hashing now reports q07's true 149,000 rows; final artifacts will be regenerated after concurrent critic reads."
+    },
+    {
+      "t": "step 18",
+      "msg": "A second stale assumption was removed: PostgreSQL 16 does not have btree skip scan (introduced in PG18). q11's candidate index can avoid sorting but must still scan all index entries."
+    },
+    {
+      "t": "step 19",
+      "msg": "Blind M1 work found a catalog contract breach: PK/FK columns were brace strings, not string arrays. Introspection now casts name[] to text[]; the regenerated catalog validates all keys and relationships."
+    },
+    {
+      "t": "step 20",
+      "msg": "Clean ground truth complete: 12/12 plans, no errors or warnings, full row counts/digests (q07=149,000; q11=200,000), and validated catalog constraint arrays."
+    },
+    {
+      "t": "step 21",
+      "msg": "M1 builder complete: 268 assertions pass across 12 corpus queries + 10 synthetic edge cases. Blind critic reference frozen; comparison now underway."
+    },
+    {
+      "t": "step 22",
+      "msg": "M7 builder complete: 11 focused tests + 4 report fixtures pass, including correctness-first ordering, incomplete inputs, rewrite/index coupling, and terminal parity. Blind critic still independent."
+    },
+    {
+      "t": "step 23",
+      "msg": "Round 1 rejected harshly: M1 scored 61 (regex null-rejection and five other false generalizations); M7 scored 46 (phrase-based correctness plus timing/dependency/sanitization failures)."
+    },
+    {
+      "t": "step 24",
+      "msg": "Cross-module decision: shared contracts now carry serializable nullability/subquery/group-expression metadata, Finding.category, and stable IndexRecommendation.id dependencies. Fresh Round-2 builders launched."
+    },
+    {
+      "t": "step 25",
+      "msg": "Blind downstream references are advancing before implementations exist: M2 semantics, M3 execution, and M4 findings are frozen; M5 index candidates are now being measured."
+    },
+    {
+      "t": "step 26",
+      "msg": "Round-2 builders complete: M1 passes 337 assertions (+69 adversarial); M7 passes 26 adversarial tests plus both-format dumps. Original critics are independently re-running their failures."
+    },
+    {
+      "t": "step 27",
+      "msg": "M7 Round 2 improved 46→87 but was rejected: blank safety fields and hard binding errors could still lose to categorical verdicts. Added structured Finding.actionability and launched fresh Round 3."
+    },
+    {
+      "t": "step 28",
+      "msg": "M1 Round 2 fixed all seven prior failure families but scored 68 after the critic found a new live-validated USING/comma ambiguity and malformed parenthesized Boolean fragment. Fresh Round 3 launched."
+    },
+    {
+      "t": "step 29",
+      "msg": "Project moved atomically out of the zoo repository to /Users/giofiore/sqlsage; launch configuration and progress server now use the standalone path."
+    },
+    {
+      "t": "step 30",
+      "msg": "Post-interruption audit: M1 passes 373 assertions, M7 passes 32 tests plus dump checks, M5 blind reference is complete, database retains exactly 8 baseline indexes. Round-3 critic reviews remain pending."
+    },
+    {
+      "t": "step 31",
+      "msg": "Claude resumed from HANDOFF.md at the new standalone path. Re-ran both documented verification suites: M1 373 assertions pass, M7 32 tests + dump-report checks pass. Confirmed the live database still holds exactly its 8 baseline indexes."
+    },
+    {
+      "t": "step 32",
+      "msg": "Fresh independent Round-3 critics launched for M1 and M7, each instructed to treat builder-authored tests as claims rather than evidence and to reproduce the Round-2 counterexamples against live PostgreSQL before scoring."
+    },
+    {
+      "t": "step 33",
+      "msg": "Critics were also told to probe the NEIGHBOURHOOD of each prior failure — chained/multi-key USING, qualified forms, JSON round-trips, longer backtick runs, overflowing timing ratios — because a builder patching one reported case often leaves the family broken."
+    },
+    {
+      "t": "step 34",
+      "msg": "M6 blind reference commissioned in parallel: it must be written while no M6 implementation exists, which is the only moment it can be genuinely unbiased. All measurements rollback-safe."
+    },
+    {
+      "t": "step 35",
+      "msg": "M1 Round-3 critic: SCORE 60, NOT CONVINCED. Both Round-2 defects confirmed genuinely fixed and verified more broadly than before — USING namespace matches PG's own information_schema star expansion, 3VL null-rejection agrees 10/10 with the live server, JSON round-trip byte-identical, and a 22-case sargability battery found no false positives OR negatives."
+    },
+    {
+      "t": "step 36",
+      "msg": "But a NEW structural defect, untested by any prior round: fanOut is orientation-dependent. computeFanOut returns false as soon as the RIGHT side is unique, never asking about the left. I reproduced it — reordering q06's FROM items flips both joins to fanOut=false with the reason 'so this join cannot multiply rows'."
+    },
+    {
+      "t": "step 37",
+      "msg": "Verified on the live server that the reordered query is JUST AS WRONG: both spellings return 902,913,180 against a true 300,971,060 — exactly 3.0000x. So the correctness signal five downstream modules depend on vanishes based purely on how the author ordered their FROM clause. Confident-wrong: worse than silence."
+    },
+    {
+      "t": "step 38",
+      "msg": "M7 Round-3 critic: SCORE 75, NOT CONVINCED. All four Round-2 gaps verified fixed and the gates confirmed not over-firing; no special-casing (the critic proved the one 'shop' literal inert by renaming the schema throughout); q10 renders NO ACTION NEEDED in 55 lines with no speedup claim."
+    },
+    {
+      "t": "step 39",
+      "msg": "The M7 defect is editorial, not robustness — and it is the worst thing this module can do. I rendered it myself: 'Measured timing ... 3.94x speedup' sits directly above 'Do this first: 1. Create the index', when that index ALONE measures 113.3ms vs a 108.8ms baseline — 1.04x SLOWER and never used by the planner."
+    },
+    {
+      "t": "step 40",
+      "msg": "The 'index alone is slower' caveat lands at line 48 of 104 and the companion-index note at line 82. A reader who applies step 1 and stops ships a regression believing they got 3.94x — on well-formed input, with the coupling explicitly declared via requiresIndexes."
+    },
+    {
+      "t": "step 41",
+      "msg": "Round-4 builders dispatched for both modules with each critic's BIGGEST_GAP verbatim, plus an explicit do-not-regress list naming everything the critics verified as genuinely good. Neither module is complete; zero critics convinced."
+    },
+    {
+      "t": "step 42",
+      "msg": "All three Round-4 subagents terminated on an account-level session limit (resets 5:10pm ET). Integrity check: no partial edits — source mtimes unchanged, M1 still passed 373, DB still at 8 indexes. The M6 blind reference was lost after its measurements completed."
+    },
+    {
+      "t": "step 43",
+      "msg": "With subagents unavailable I did the M1 builder work directly. I am eligible as a builder because I have deliberately never opened a blind reference file; an independent critic can still review this."
+    },
+    {
+      "t": "step 44",
+      "msg": "Root cause: computeFanOut returned false the instant the RIGHT side proved unique and never asked about the left. Fixed by testing left-INPUT uniqueness (not one base table) and tracking multiplicity cumulatively across joins."
+    },
+    {
+      "t": "step 45",
+      "msg": "Contract change flagged, not made silently: JoinIR.fanOut now means 'multiplies EITHER input', plus additive optional fanOutSide and multipliedRelations. M7's 32 tests still pass, confirming the change is backward-compatible."
+    },
+    {
+      "t": "step 46",
+      "msg": "Verified: all three FROM orderings of q06 report multiplied={c,o} so sum(o.total_cents) is flagged every way it can be written; the same query WITHOUT order_items reports {c} and does not flag it. Orientation-independent without over-firing."
+    },
+    {
+      "t": "step 47",
+      "msg": "One existing assertion changed deliberately, not flipped to go green: q08's products join was asserted fanOut=false under the old orientation-dependent meaning. The server shows that join emits 19,935 rows over 250 distinct products — each product row repeats ~79.7x — so false was factually wrong."
+    },
+    {
+      "t": "step 48",
+      "msg": "393 assertions pass (20 new: three q06 orderings, mirror-image case, unique-on-both-sides, USING chain losing left uniqueness). M1 remains UNAPPROVED pending an independent critic — builder-green is not approval."
+    },
+    {
+      "t": "step 49",
+      "msg": "Session limit lifted. Relaunched all three outstanding items in parallel rather than serially: M1 Round-4 critic, M7 Round-4 builder, M6 blind reference."
+    },
+    {
+      "t": "step 50",
+      "msg": "The M1 critic is explicitly warned that the Round-4 fix was written by the orchestrator and self-verified — the exact arrangement this process exists to distrust — and told to treat NOTES.md claims and dump-ir assertions as an interested party's assertions, not evidence."
+    },
+    {
+      "t": "step 51",
+      "msg": "It is also pointed at the four axes I admitted NOT testing: FULL/RIGHT joins, LATERAL and derived tables, 4+ relation chains and self-joins, and whether the new noisiness is a sound contract or a burden that will produce false positives in M2/M4."
+    },
+    {
+      "t": "step 52",
+      "msg": "And told to independently verify the one assertion I changed (q08 products, ~79.7x) — 'was the assertion change justified by the server, or was a test bent to make a change pass?' That distinction is the difference between a fix and a cheat."
+    },
+    {
+      "t": "step 53",
+      "msg": "M6 reference redo now writes the file incrementally. The previous attempt reported 'all measurements complete... writing the reference' and then died, losing a full set of rollback-safe measurements for want of one file write."
+    },
+    {
+      "t": "step 54",
+      "msg": "Wired src/index.ts (pipeline) and src/cli.ts, with M2-M6 injectable as they land. All 12 corpus queries now run end to end without throwing. No integration path existed before, so contract mismatches between M1 and M7 were invisible."
+    },
+    {
+      "t": "step 55",
+      "msg": "The very first end-to-end run found a defect no module-level test could catch: with M2-M6 absent, q06 — revenue inflated exactly 3.0000x — renders 'NO ACTION NEEDED / No actionable problem was found in the complete analysis'."
+    },
+    {
+      "t": "step 56",
+      "msg": "Root cause is a CONTRACT gap, not an M7 bug: Analysis has no field expressing that an analysis is partial, so the renderer cannot know M2-M6 are missing. Absence of findings reads identically to a clean bill of health."
+    },
+    {
+      "t": "step 57",
+      "msg": "Deliberately did NOT edit src/types.ts to fix it — the M7 builder is mid-flight and editing the shared contract under it would conflict. Documented as a required change for the next round instead."
+    },
+    {
+      "t": "step 58",
+      "msg": "Interim mitigation: the CLI prints an unmissable incompleteness banner BEFORE the report, on stdout. Leading rather than trailing matters — a stderr note after the fact is lost the moment output is piped to a file."
+    },
+    {
+      "t": "step 59",
+      "msg": "Wrote eval/run.ts, fixing the documented-broken 'npm run eval'. It needs no database, so it is safe to run while a critic is taking timing measurements. 12/12 corpus queries compose cleanly through the full pipeline."
+    },
+    {
+      "t": "step 60",
+      "msg": "The eval harness independently confirms the fan-out fix end to end: q06 reports mult={c,o} and q08 mult={c,o,p} (correctly including products), while queries with no multiplying join report none. This is integration evidence, not a quality judgement — that verdict belongs to the critics."
+    },
+    {
+      "t": "step 61",
+      "msg": "Both previously-broken package scripts now work: npm run explain (src/cli.ts) and npm run eval (eval/run.ts). The handoff had flagged them as placeholders that fail."
+    },
+    {
+      "t": "step 62",
+      "msg": "All three R4 agents died: two 'Connection closed mid-response', one 600s stall. Six agents lost this session across three distinct failure modes. Database still clean at 8 indexes; no partial source edits."
+    },
+    {
+      "t": "step 63",
+      "msg": "The incremental-write instruction proved itself: M6's reference survived with 395 measured lines, where the identical failure previously destroyed everything. Now a standing rule in the handoff."
+    },
+    {
+      "t": "step 64",
+      "msg": "The M1 critic died before writing its critique — but its probe scripts survived and were re-runnable. Running them found THREE real defects in the fan-out fix I wrote by hand, none caught by my 393 assertions."
+    },
+    {
+      "t": "step 65",
+      "msg": "WORST DEFECT (fixed): multiplicity state was per-binder, not per-block. Two identical side-by-side derived tables produced DIFFERENT verdicts, and a CTE that multiplied c made an unrelated 1:1 join in main report a fan-out it does not have — a false positive, and the same context-dependence the fix was supposed to remove."
+    },
+    {
+      "t": "step 66",
+      "msg": "Fixed with block-scoped multiplicity (multipliedByBlock + currentMultiplied). Both cases now match their controls exactly. 3 regression assertions added, 396 total. Noting plainly: the earlier 393 passed while the bug was live, so that count was never coverage."
+    },
+    {
+      "t": "step 67",
+      "msg": "STILL OPEN: (a) old-style comma joins produce no JoinIR at all, so q06 written that way reports NO fan-out — the original orientation bug in a new disguise; (b) LATERAL reports multiplied=[c,t] when sum(t.total_cents) is actually correct, a false positive from ON true having no equi-key."
+    },
+    {
+      "t": "step 68",
+      "msg": "Honest status: M1 is further from done than it appeared. A hand-written, self-verified fix passed every test I had and was still wrong in three ways. Independent criticism found what my own testing structurally could not."
+    },
+    {
+      "t": "step 69",
+      "msg": "Session limit again (resets 11pm ET). Seven subagents lost this session across three failure modes: account limits, connection drops, and a stall."
+    },
+    {
+      "t": "step 70",
+      "msg": "HAZARD FOUND while capturing final state: the dead M7 builder DID write to prioritize.ts (62,650 -> 63,406 bytes, 18:26) before dying. Re-rendered q01 and the output is byte-identical — the defect is NOT fixed. The file holds partial, non-functional edits and there is no git repo to diff against."
+    },
+    {
+      "t": "step 71",
+      "msg": "Also confirmed M6's reference is only ~25% written — 395 lines covering q01-q03 of 12, not the full corpus. Recorded as partial so nobody mistakes it for a complete yardstick."
+    },
+    {
+      "t": "step 72",
+      "msg": "HANDOFF.md restructured to open with §0-NOW: verified command output, a per-module trust table separating 'green' from 'trustworthy', and the three hazards stated in red before any narrative."
+    },
+    {
+      "t": "step 73",
+      "msg": "Wrote docs/CODEX-PROMPT.md — a paste-ready prompt with the six ordered next actions, the process rules, and the agent-reliability lessons (write files incrementally; save critic probes; check for partial edits after any death)."
+    },
+    {
+      "t": "step 74",
+      "msg": "Session limit lifted. Relaunched all three hazards in parallel rather than serially, each with explicit instructions to write output incrementally."
+    },
+    {
+      "t": "step 75",
+      "msg": "The M7 builder is told FIRST to establish the real state of prioritize.ts — inspect the dead agent's ~750 bytes of partial edits and deliberately finish or remove them, since there is no git baseline — and to report what it found rather than silently building on unknown code."
+    },
+    {
+      "t": "step 76",
+      "msg": "The M1 builder gets both open defects with the framing that a comma-join spelling erasing the fan-out signal is the SAME class of bug M1 was rejected for in Round 3, and that the LATERAL false positive is as damaging as a miss because five modules read that field."
+    },
+    {
+      "t": "step 77",
+      "msg": "The M6 agent is told to APPEND to the salvaged 395 lines covering q01-q03, not restart — the reference survived two agent deaths precisely because it was written incrementally."
+    },
+    {
+      "t": "step 78",
+      "msg": "All three agents stopped by the user. Not relaunched — a deliberate stop is a decision to respect, not an error to retry."
+    },
+    {
+      "t": "step 79",
+      "msg": "The M1 builder had written to src/ir/index.ts and eval/dump-ir.ts before being stopped. Verified its work by direct probe rather than trusting it: comma-join form now yields joins=2 multiplied={c,o}, identical to explicit JOIN. Defect 1 of 2 genuinely closed."
+    },
+    {
+      "t": "step 80",
+      "msg": "LATERAL false positive still open: c->t reports multiplied=[c,t] when sum(t.total_cents) is correct, because ON true carries no equi-key and the correlation predicate inside the lateral block is not recognised."
+    },
+    {
+      "t": "step 81",
+      "msg": "Flagged in the handoff that the assertion count stayed at 399, so the comma-join fix may be REAL BUT UNCOVERED — a test should be added asserting both spellings produce identical multipliedRelations before anyone trusts it."
+    },
+    {
+      "t": "step 82",
+      "msg": "Re-verified everything by hand after the stops: 399 M1 assertions, 32 M7 tests, 12/12 pipeline compose, 8 baseline indexes, no database damage. Handoff and Codex prompt current."
+    },
+    {
+      "t": "step 83",
+      "msg": "Went to add the missing comma-join regression test and found the stopped builder had already written one — and a better one than mine, since it also asserts an unequated comma relation is NOT given an invented join. Removed my duplicate."
+    },
+    {
+      "t": "step 84",
+      "msg": "Corrected my own handoff entry: I had flagged the comma-join fix as possibly untested because the assertion count stayed at 399. That was wrong. The count was flat because the builder's additions replaced earlier scaffolding — assertion counts are not coverage in EITHER direction."
+    },
+    {
+      "t": "step 85",
+      "msg": "Final verified state: 399 M1 assertions, 12/12 pipeline, 8 baseline indexes, no partial or broken edits. One M1 defect remains open (LATERAL). Zero critics convinced; the goal needs critic verdicts, which needs subagents, which the user has stopped."
+    },
+    {
+      "t": "step 86",
+      "msg": "Codex resumed from the authoritative 2026-08-01 handoff and reverified the exact clean baseline: 406 M1 assertions, 35/35 M7 tests, dump-report checks pass, 12/12 pipeline composition, and exactly 8 shop indexes. A fresh independent Round-4 M7 critic is now probing the unreviewed rewrite/index coupling and missingModules contract behavior; zero critics are convinced until its written verdict says otherwise."
+    },
+    {
+      "t": "step 87",
+      "msg": "Fresh M7 Round-4 critic rejected the renderer at 78/100. The narrow q01 exact-ID repair is real, but two rewrites sharing one orphan index and one rewrite requiring indexes attached to multiple findings split into separate issues while the report falsely says the companions are supplied immediately. q07-like orphan intent branches still become synthetic correctness leaders."
+    },
+    {
+      "t": "step 88",
+      "msg": "Codex independently reran all three critic probes and reproduced every headline failure before authorizing work. A fresh reference-blind Round-5 M7 builder is now implementing exact-ID rewrite/index connected components and q07-safe orphan handling; lower-priority critic gaps remain deliberately out of scope for this smallest-piece round."
+    },
+    {
+      "t": "step 89",
+      "msg": "M7 Round-5 builder completed an UNREVIEWED first-class exact-ID component repair without changing src/types.ts. Four new generic regression families were proved load-bearing by disabling the fix and observing failures, then restoring; focused suite is 39/39."
+    },
+    {
+      "t": "step 90",
+      "msg": "Codex independently verified 39/39 tests, dump-report, 12/12 pipeline, syntax, determinism/generalization, and exactly 8 indexes. The untouched prior coupling probe now fails at its old-defect assertion because the shared index is correctly adjacent. A fresh independent Round-5 M7 critic is reviewing now; zero critics remain convinced."
+    },
+    {
+      "t": "step 91",
+      "msg": "Fresh M7 Round-5 critic scored 84/100 and rejected the module while accepting the component repair across chain/star topologies, ordering permutations, mixed blockers, cross-category components, and q01/q07 target cases. Highest gap: arbitrary nonblank DDL such as DROP TABLE still satisfies dependencies and receives false CREATE INDEX locking advice."
+    },
+    {
+      "t": "step 92",
+      "msg": "Codex reproduced the unsafe DDL behavior and confirmed the nonblank-only validation path before dispatching a fresh reference-blind Round-6 builder. Scope is one complete PostgreSQL CREATE INDEX statement at the runtime boundary; accepted component logic and all other known gaps are frozen for this smallest-piece round."
+    },
+    {
+      "t": "step 93",
+      "msg": "M7 Round-6 builder completed an UNREVIEWED lexer-backed single CREATE INDEX recognizer used by validation, exact-ID dependency formation, and defensive rendering. Three staged mutants proved the boundary, secondary syntax check, and renderer guard load-bearing; focused suite is 43/43."
+    },
+    {
+      "t": "step 94",
+      "msg": "Codex independently verified 43/43 tests, dump-report, 12/12 pipeline, component/q07 non-regression probes, syntax, determinism, and exactly 8 indexes. The untouched old DDL probe now fails at its stale zero-blocker assertion. A fresh independent Round-6 M7 critic is comparing the accepted subset against PostgreSQL 16 now."
+    },
+    {
+      "t": "step 95",
+      "msg": "Round-6 live PostgreSQL differential review found the arbitrary-payload and renderer defenses real, but the accepted clause grammar still has soundness failures that reach deployable output. A verdict-only adjudicator completed the blocked critic synthesis at 39/no after the mandatory confident-wrong deduction."
+    },
+    {
+      "t": "step 96",
+      "msg": "Codex independently reran the live PG16 differential and renderer-defense probes, reproduced the grammar divergence and propagation, and confirmed exactly 8 indexes before dispatching a fresh reference-blind Round-7 builder. Scope is grammar soundness only; safe conservative rejection is preferred over loose acceptance."
+    },
+    {
+      "t": "step 97",
+      "msg": "M7 Round-7 builder completed an UNREVIEWED grammar-soundness repair: exact supported WITH syntax, PG16 identifier keyword rules, empty quantifier rejection, and conservative U&/E rejection. Four clause-family mutants failed recognition plus end-to-end dependency/render coverage; focused suite is 46/46."
+    },
+    {
+      "t": "step 98",
+      "msg": "Codex independently verified 46/46 tests, report and 12/12 integration output, component/q07/determinism gates, syntax, six broad live-PG valid controls before stale-probe inversion, and exactly 8 indexes. A fresh Round-7 critic is now building a new PostgreSQL differential matrix."
+    },
+    {
+      "t": "step 99",
+      "msg": "Fresh Round-7 M7 review completed a 100-case PostgreSQL 16 differential matrix and end-to-end renderer probe. All eight Round-6 false-accept families are closed, but bare CR ends a PostgreSQL -- comment while SQLSage treated the rest of the payload as comment text; a following statement entered the model and received coupled-action lock guidance. Verdict: 50/no after the mandatory confident-wrong deduction."
+    },
+    {
+      "t": "step 100",
+      "msg": "Codex independently reran both Round-7 probes, reproduced the one lexical false accept and its dependency/rendering propagation, and confirmed exactly 8 indexes. A fresh reference-blind Round-8 builder is repairing only LF/CRLF/bare-CR line-comment identity; accepted component, renderer-defense, and grammar behavior remain frozen."
+    },
+    {
+      "t": "step 101",
+      "msg": "M7 Round-8 builder completed the narrow line-comment repair with two load-bearing regression families. Codex independently verified 48/48 tests, 406 M1 assertions, report and 12/12 integration output, component/q07/determinism/import gates, zero false accepts across the saved 100-case live-PG matrix, and exactly 8 indexes. A fresh independent Round-8 critic is now reviewing the whole module; the repair remains unreviewed until that verdict lands."
+    },
+    {
+      "t": "step 102",
+      "msg": "Round-8 review accepted the LF/CRLF/bare-CR repair with fresh live PostgreSQL and renderer matrices, then scored the whole M7 module 51/no on older backlog items. The attempted Round-9 builder was stopped before changing source."
+    },
+    {
+      "t": "step 103",
+      "msg": "Product route changed by user direction: critic scores no longer gate progress. docs/CLI-FIRST-PLAN.md now defines an installable sqlsage analyze command, complete offline M2–M6 vertical slice, schema/plan inputs, safe connected PostgreSQL, packaging, README, and one bounded milestone review. Current work is CLI Milestone 1."
+    },
+    {
+      "t": "step 104",
+      "msg": "CLI Milestone 1 complete: M2–M6 are implemented and wired by default; strict file/inline/stdin input and text/Markdown/JSON output work. All 12 corpus workflows pass named product gates, including q05/q06 wrong-result handling and q10 false-positive suppression."
+    },
+    {
+      "t": "step 105",
+      "msg": "CLI Milestone 2 complete: supported PostgreSQL schema SQL imports to six tables/eight indexes; saved raw plans and SQLSage evidence bundles produce observed-plan analysis, reject bundled SQL mismatches, and keep proposed changes unverified."
+    },
+    {
+      "t": "step 106",
+      "msg": "CLI Milestone 3 complete: live mode defaults to non-executing JSON EXPLAIN. Explicit --analyze requires one read-only schema-bound SELECT, a transaction-local timeout, rollback, and client shutdown. Live default/analyzed smoke passed; persistent shop indexes remain exactly 8."
+    },
+    {
+      "t": "step 107",
+      "msg": "Packaging caught and fixed a real install blocker: Node refuses TypeScript stripping under node_modules. The tarball now ships two built JavaScript bundles plus catalog, README, and product plan; fresh-prefix install and q10 execution pass."
+    },
+    {
+      "t": "step 108",
+      "msg": "Release verification was green before review: 139 standard tests plus one opt-in live integration, 406 M1 assertions, 12/12 acceptance workflows, build, six-file package, and fresh install smoke. One bounded product review then began; no critic loop would follow."
+    },
+    {
+      "t": "step 109",
+      "msg": "The bounded product review reproduced three release blockers: non-SELECT JSON could claim complete/clean, help omitted the --analyze external-side-effect warning, and a closed stdout pipe emitted an uncaught EPIPE stack. All other primary workflows, package installation, named corpus gates, live safety behavior, and the 8-index invariant passed."
+    },
+    {
+      "t": "step 110",
+      "msg": "All three review blockers are fixed with regressions. Final verification: 141/141 standard tests plus the opt-in live integration, 406 M1 assertions, 12/12 corpus workflows, six-file package build, fresh installed CLI and package API smoke, and exactly 8 persistent shop indexes. CLI-first objective complete."
+    }
+  ]
+}

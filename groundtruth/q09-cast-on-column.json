@@ -1,0 +1,334 @@
+{
+  "id": "q09-cast-on-column",
+  "sql": "SELECT o.created_at::date AS day, count(*) AS orders\nFROM shop.orders o\nWHERE o.created_at::date BETWEEN DATE '2024-06-01' AND DATE '2024-06-30'\nGROUP BY o.created_at::date\nORDER BY day;",
+  "planJson": {
+    "Plan": {
+      "Node Type": "Aggregate",
+      "Strategy": "Sorted",
+      "Partial Mode": "Finalize",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 38557.64,
+      "Total Cost": 39769.6,
+      "Plan Rows": 10000,
+      "Plan Width": 12,
+      "Actual Startup Time": 75.089,
+      "Actual Total Time": 78.949,
+      "Actual Rows": 30,
+      "Actual Loops": 1,
+      "Output": [
+        "((created_at)::date)",
+        "count(*)"
+      ],
+      "Group Key": [
+        "((o.created_at)::date)"
+      ],
+      "Shared Hit Blocks": 20744,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0,
+      "Plans": [
+        {
+          "Node Type": "Gather Merge",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 38557.64,
+          "Total Cost": 39602.93,
+          "Plan Rows": 8334,
+          "Plan Width": 12,
+          "Actual Startup Time": 75.086,
+          "Actual Total Time": 78.934,
+          "Actual Rows": 67,
+          "Actual Loops": 1,
+          "Output": [
+            "((created_at)::date)",
+            "(PARTIAL count(*))"
+          ],
+          "Workers Planned": 2,
+          "Workers Launched": 2,
+          "Shared Hit Blocks": 20744,
+          "Shared Read Blocks": 0,
+          "Shared Dirtied Blocks": 0,
+          "Shared Written Blocks": 0,
+          "Local Hit Blocks": 0,
+          "Local Read Blocks": 0,
+          "Local Dirtied Blocks": 0,
+          "Local Written Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Aggregate",
+              "Strategy": "Sorted",
+              "Partial Mode": "Partial",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 37557.62,
+              "Total Cost": 37640.96,
+              "Plan Rows": 4167,
+              "Plan Width": 12,
+              "Actual Startup Time": 68.037,
+              "Actual Total Time": 69.445,
+              "Actual Rows": 22,
+              "Actual Loops": 3,
+              "Output": [
+                "((created_at)::date)",
+                "PARTIAL count(*)"
+              ],
+              "Group Key": [
+                "((o.created_at)::date)"
+              ],
+              "Shared Hit Blocks": 20744,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Workers": [
+                {
+                  "Worker Number": 0,
+                  "Actual Startup Time": 65.288,
+                  "Actual Total Time": 66.628,
+                  "Actual Rows": 24,
+                  "Actual Loops": 1,
+                  "Shared Hit Blocks": 6430,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                },
+                {
+                  "Worker Number": 1,
+                  "Actual Startup Time": 65.212,
+                  "Actual Total Time": 66.606,
+                  "Actual Rows": 23,
+                  "Actual Loops": 1,
+                  "Shared Hit Blocks": 6418,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                }
+              ],
+              "Plans": [
+                {
+                  "Node Type": "Sort",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 37557.62,
+                  "Total Cost": 37568.04,
+                  "Plan Rows": 4167,
+                  "Plan Width": 4,
+                  "Actual Startup Time": 67.946,
+                  "Actual Total Time": 68.572,
+                  "Actual Rows": 18383,
+                  "Actual Loops": 3,
+                  "Output": [
+                    "((created_at)::date)"
+                  ],
+                  "Sort Key": [
+                    "((o.created_at)::date)"
+                  ],
+                  "Sort Method": "quicksort",
+                  "Sort Space Used": 769,
+                  "Sort Space Type": "Memory",
+                  "Shared Hit Blocks": 20744,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0,
+                  "Workers": [
+                    {
+                      "Worker Number": 0,
+                      "Actual Startup Time": 65.182,
+                      "Actual Total Time": 65.792,
+                      "Actual Rows": 18614,
+                      "Actual Loops": 1,
+                      "Sort Method": "quicksort",
+                      "Sort Space Used": 769,
+                      "Sort Space Type": "Memory",
+                      "Shared Hit Blocks": 6430,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0
+                    },
+                    {
+                      "Worker Number": 1,
+                      "Actual Startup Time": 65.173,
+                      "Actual Total Time": 65.739,
+                      "Actual Rows": 17923,
+                      "Actual Loops": 1,
+                      "Sort Method": "quicksort",
+                      "Sort Space Used": 769,
+                      "Sort Space Type": "Memory",
+                      "Shared Hit Blocks": 6418,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0
+                    }
+                  ],
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": true,
+                      "Async Capable": false,
+                      "Relation Name": "orders",
+                      "Schema": "shop",
+                      "Alias": "o",
+                      "Startup Cost": 0,
+                      "Total Cost": 37307.08,
+                      "Plan Rows": 4167,
+                      "Plan Width": 4,
+                      "Actual Startup Time": 26.652,
+                      "Actual Total Time": 67.119,
+                      "Actual Rows": 18383,
+                      "Actual Loops": 3,
+                      "Output": [
+                        "(created_at)::date"
+                      ],
+                      "Filter": "(((o.created_at)::date >= '2024-06-01'::date) AND ((o.created_at)::date <= '2024-06-30'::date))",
+                      "Rows Removed by Filter": 648284,
+                      "Shared Hit Blocks": 20630,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0,
+                      "Workers": [
+                        {
+                          "Worker Number": 0,
+                          "Actual Startup Time": 23.809,
+                          "Actual Total Time": 64.268,
+                          "Actual Rows": 18614,
+                          "Actual Loops": 1,
+                          "Shared Hit Blocks": 6373,
+                          "Shared Read Blocks": 0,
+                          "Shared Dirtied Blocks": 0,
+                          "Shared Written Blocks": 0,
+                          "Local Hit Blocks": 0,
+                          "Local Read Blocks": 0,
+                          "Local Dirtied Blocks": 0,
+                          "Local Written Blocks": 0,
+                          "Temp Read Blocks": 0,
+                          "Temp Written Blocks": 0
+                        },
+                        {
+                          "Worker Number": 1,
+                          "Actual Startup Time": 23.864,
+                          "Actual Total Time": 64.322,
+                          "Actual Rows": 17923,
+                          "Actual Loops": 1,
+                          "Shared Hit Blocks": 6361,
+                          "Shared Read Blocks": 0,
+                          "Shared Dirtied Blocks": 0,
+                          "Shared Written Blocks": 0,
+                          "Local Hit Blocks": 0,
+                          "Local Read Blocks": 0,
+                          "Local Dirtied Blocks": 0,
+                          "Local Written Blocks": 0,
+                          "Temp Read Blocks": 0,
+                          "Temp Written Blocks": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Settings": {
+      "work_mem": "32MB",
+      "random_page_cost": "1.1"
+    },
+    "Planning": {
+      "Shared Hit Blocks": 0,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0
+    },
+    "Planning Time": 0.069,
+    "Triggers": [],
+    "Execution Time": 78.972
+  },
+  "planText": "Finalize GroupAggregate  (cost=38557.64..39769.60 rows=10000 width=12) (actual time=86.484..90.066 rows=30 loops=1)\n  Output: ((created_at)::date), count(*)\n  Group Key: ((o.created_at)::date)\n  Buffers: shared hit=20744\n  ->  Gather Merge  (cost=38557.64..39602.93 rows=8334 width=12) (actual time=86.464..90.051 rows=66 loops=1)\n        Output: ((created_at)::date), (PARTIAL count(*))\n        Workers Planned: 2\n        Workers Launched: 2\n        Buffers: shared hit=20744\n        ->  Partial GroupAggregate  (cost=37557.62..37640.96 rows=4167 width=12) (actual time=79.272..80.715 rows=22 loops=3)\n              Output: ((created_at)::date), PARTIAL count(*)\n              Group Key: ((o.created_at)::date)\n              Buffers: shared hit=20744\n              Worker 0:  actual time=76.439..77.856 rows=21 loops=1\n                Buffers: shared hit=6551\n              Worker 1:  actual time=76.406..77.660 rows=20 loops=1\n                Buffers: shared hit=6380\n              ->  Sort  (cost=37557.62..37568.04 rows=4167 width=4) (actual time=79.158..79.802 rows=18383 loops=3)\n                    Output: ((created_at)::date)\n                    Sort Key: ((o.created_at)::date)\n                    Sort Method: quicksort  Memory: 769kB\n                    Buffers: shared hit=20744\n                    Worker 0:  actual time=76.258..76.912 rows=18614 loops=1\n                      Sort Method: quicksort  Memory: 769kB\n                      Buffers: shared hit=6551\n                    Worker 1:  actual time=76.365..76.889 rows=16371 loops=1\n                      Sort Method: quicksort  Memory: 385kB\n                      Buffers: shared hit=6380\n                    ->  Parallel Seq Scan on shop.orders o  (cost=0.00..37307.08 rows=4167 width=4) (actual time=28.026..78.143 rows=18383 loops=3)\n                          Output: (created_at)::date\n                          Filter: (((o.created_at)::date >= '2024-06-01'::date) AND ((o.created_at)::date <= '2024-06-30'::date))\n                          Rows Removed by Filter: 648284\n                          Buffers: shared hit=20630\n                          Worker 0:  actual time=25.189..75.222 rows=18614 loops=1\n                            Buffers: shared hit=6494\n                          Worker 1:  actual time=25.204..75.323 rows=16371 loops=1\n                            Buffers: shared hit=6323\nSettings: work_mem = '32MB', random_page_cost = '1.1'\nPlanning Time: 0.062 ms\nExecution Time: 90.092 ms",
+  "executionMs": 78.972,
+  "planningMs": 0.069,
+  "medianMs": 81.398,
+  "runs": [
+    81.398,
+    81.982,
+    78.972
+  ],
+  "fingerprint": {
+    "rowCount": 30,
+    "digest": "927991241e017fb3",
+    "sample": [
+      {
+        "day": "2024-06-01T04:00:00.000Z",
+        "orders": "1839"
+      },
+      {
+        "day": "2024-06-02T04:00:00.000Z",
+        "orders": "1838"
+      },
+      {
+        "day": "2024-06-03T04:00:00.000Z",
+        "orders": "1838"
+      }
+    ]
+  }
+}

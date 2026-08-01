@@ -1,0 +1,62 @@
+-- q12-jsonb-and-unbounded-sort: Event funnel filtered on a jsonb attribute
+-- median execution: 195.5 ms (runs: 196, 185, 218 ms), planning: 0.09 ms
+-- rows returned (complete result): 1
+
+SELECT e.payload->>'utm_source' AS source,
+       count(*) AS events,
+       count(DISTINCT e.customer_id) AS customers
+FROM shop.events e
+WHERE e.payload->>'utm_source' = 'email'
+  AND e.occurred_at >= TIMESTAMPTZ '2024-06-01'
+  AND e.event_type IN ('add_to_cart', 'checkout')
+GROUP BY 1
+ORDER BY events DESC;
+
+Sort  (cost=123284.17..123284.18 rows=1 width=48) (actual time=197.560..200.018 rows=1 loops=1)
+  Output: ((payload ->> 'utm_source'::text)), (count(*)), (count(DISTINCT customer_id))
+  Sort Key: (count(*)) DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=4267 read=76154
+  ->  GroupAggregate  (cost=123047.17..123284.16 rows=1 width=48) (actual time=197.556..200.014 rows=1 loops=1)
+        Output: (payload ->> 'utm_source'::text), count(*), count(DISTINCT customer_id)
+        Buffers: shared hit=4267 read=76154
+        ->  Gather Merge  (cost=123047.17..123274.40 rows=1951 width=65) (actual time=178.781..195.020 rows=111589 loops=1)
+              Output: payload, customer_id
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=4267 read=76154
+              ->  Sort  (cost=122047.15..122049.18 rows=813 width=65) (actual time=169.079..171.110 rows=37196 loops=3)
+                    Output: payload, customer_id
+                    Sort Key: e.customer_id
+                    Sort Method: quicksort  Memory: 5024kB
+                    Buffers: shared hit=4267 read=76154
+                    Worker 0:  actual time=166.916..169.074 rows=37703 loops=1
+                      Sort Method: quicksort  Memory: 5018kB
+                      JIT:
+                        Functions: 4
+                        Options: Inlining false, Optimization false, Expressions true, Deforming true
+                        Timing: Generation 0.197 ms, Inlining 0.000 ms, Optimization 0.131 ms, Emission 2.505 ms, Total 2.834 ms
+                      Buffers: shared hit=1403 read=25429
+                    Worker 1:  actual time=161.823..163.795 rows=36133 loops=1
+                      Sort Method: quicksort  Memory: 4872kB
+                      JIT:
+                        Functions: 4
+                        Options: Inlining false, Optimization false, Expressions true, Deforming true
+                        Timing: Generation 0.432 ms, Inlining 0.000 ms, Optimization 0.156 ms, Emission 3.280 ms, Total 3.867 ms
+                      Buffers: shared hit=1352 read=23315
+                    ->  Parallel Seq Scan on shop.events e  (cost=0.00..122007.85 rows=813 width=65) (actual time=29.681..160.418 rows=37196 loops=3)
+                          Output: payload, customer_id
+                          Filter: ((e.occurred_at >= '2024-06-01 00:00:00+00'::timestamp with time zone) AND (e.event_type = ANY ('{add_to_cart,checkout}'::text[])) AND ((e.payload ->> 'utm_source'::text) = 'email'::text))
+                          Rows Removed by Filter: 1629470
+                          Buffers: shared hit=4193 read=76154
+                          Worker 0:  actual time=27.450..159.959 rows=37703 loops=1
+                            Buffers: shared hit=1366 read=25429
+                          Worker 1:  actual time=22.457..148.391 rows=36133 loops=1
+                            Buffers: shared hit=1315 read=23315
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning Time: 0.077 ms
+JIT:
+  Functions: 14
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.882 ms, Inlining 0.000 ms, Optimization 0.445 ms, Emission 8.729 ms, Total 10.055 ms
+Execution Time: 200.315 ms

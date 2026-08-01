@@ -1,0 +1,271 @@
+{
+  "id": "q03-correlated-scalar-subquery",
+  "sql": "SELECT c.customer_id,\n       c.email,\n       (SELECT count(*) FROM shop.orders o WHERE o.customer_id = c.customer_id) AS order_count,\n       (SELECT max(o2.created_at) FROM shop.orders o2 WHERE o2.customer_id = c.customer_id) AS last_order_at\nFROM shop.customers c\nWHERE c.loyalty_tier = 'gold'\nORDER BY order_count DESC;",
+  "planJson": {
+    "Plan": {
+      "Node Type": "Sort",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 33315.2,
+      "Total Cost": 33320.08,
+      "Plan Rows": 1953,
+      "Plan Width": 46,
+      "Actual Startup Time": 29.501,
+      "Actual Total Time": 29.561,
+      "Actual Rows": 2000,
+      "Actual Loops": 1,
+      "Output": [
+        "c.customer_id",
+        "c.email",
+        "((SubPlan 1))",
+        "((SubPlan 2))"
+      ],
+      "Sort Key": [
+        "((SubPlan 1)) DESC"
+      ],
+      "Sort Method": "quicksort",
+      "Sort Space Used": 189,
+      "Sort Space Type": "Memory",
+      "Shared Hit Blocks": 34440,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0,
+      "Plans": [
+        {
+          "Node Type": "Seq Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "customers",
+          "Schema": "shop",
+          "Alias": "c",
+          "Startup Cost": 0,
+          "Total Cost": 33208.45,
+          "Plan Rows": 1953,
+          "Plan Width": 46,
+          "Actual Startup Time": 0.032,
+          "Actual Total Time": 29.31,
+          "Actual Rows": 2000,
+          "Actual Loops": 1,
+          "Output": [
+            "c.customer_id",
+            "c.email",
+            "(SubPlan 1)",
+            "(SubPlan 2)"
+          ],
+          "Filter": "(c.loyalty_tier = 'gold'::text)",
+          "Rows Removed by Filter": 198000,
+          "Shared Hit Blocks": 34440,
+          "Shared Read Blocks": 0,
+          "Shared Dirtied Blocks": 0,
+          "Shared Written Blocks": 0,
+          "Local Hit Blocks": 0,
+          "Local Read Blocks": 0,
+          "Local Dirtied Blocks": 0,
+          "Local Written Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Aggregate",
+              "Strategy": "Plain",
+              "Partial Mode": "Simple",
+              "Parent Relationship": "SubPlan",
+              "Subplan Name": "SubPlan 1",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 1.73,
+              "Total Cost": 1.74,
+              "Plan Rows": 1,
+              "Plan Width": 8,
+              "Actual Startup Time": 0.002,
+              "Actual Total Time": 0.002,
+              "Actual Rows": 1,
+              "Actual Loops": 2000,
+              "Output": [
+                "count(*)"
+              ],
+              "Shared Hit Blocks": 6001,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Plans": [
+                {
+                  "Node Type": "Index Only Scan",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Scan Direction": "Forward",
+                  "Index Name": "idx_orders_customer_id",
+                  "Relation Name": "orders",
+                  "Schema": "shop",
+                  "Alias": "o",
+                  "Startup Cost": 0.43,
+                  "Total Cost": 1.7,
+                  "Plan Rows": 10,
+                  "Plan Width": 0,
+                  "Actual Startup Time": 0.001,
+                  "Actual Total Time": 0.002,
+                  "Actual Rows": 10,
+                  "Actual Loops": 2000,
+                  "Output": [
+                    "o.customer_id"
+                  ],
+                  "Index Cond": "(o.customer_id = c.customer_id)",
+                  "Rows Removed by Index Recheck": 0,
+                  "Heap Fetches": 0,
+                  "Shared Hit Blocks": 6001,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                }
+              ]
+            },
+            {
+              "Node Type": "Aggregate",
+              "Strategy": "Plain",
+              "Partial Mode": "Simple",
+              "Parent Relationship": "SubPlan",
+              "Subplan Name": "SubPlan 2",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 12.73,
+              "Total Cost": 12.74,
+              "Plan Rows": 1,
+              "Plan Width": 8,
+              "Actual Startup Time": 0.006,
+              "Actual Total Time": 0.006,
+              "Actual Rows": 1,
+              "Actual Loops": 2000,
+              "Output": [
+                "max(o2.created_at)"
+              ],
+              "Shared Hit Blocks": 26000,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Plans": [
+                {
+                  "Node Type": "Index Scan",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Scan Direction": "Forward",
+                  "Index Name": "idx_orders_customer_id",
+                  "Relation Name": "orders",
+                  "Schema": "shop",
+                  "Alias": "o2",
+                  "Startup Cost": 0.43,
+                  "Total Cost": 12.7,
+                  "Plan Rows": 10,
+                  "Plan Width": 8,
+                  "Actual Startup Time": 0.001,
+                  "Actual Total Time": 0.006,
+                  "Actual Rows": 10,
+                  "Actual Loops": 2000,
+                  "Output": [
+                    "o2.order_id",
+                    "o2.customer_id",
+                    "o2.status",
+                    "o2.created_at",
+                    "o2.shipped_at",
+                    "o2.total_cents",
+                    "o2.coupon_code"
+                  ],
+                  "Index Cond": "(o2.customer_id = c.customer_id)",
+                  "Rows Removed by Index Recheck": 0,
+                  "Shared Hit Blocks": 26000,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Settings": {
+      "work_mem": "32MB",
+      "random_page_cost": "1.1"
+    },
+    "Planning": {
+      "Shared Hit Blocks": 0,
+      "Shared Read Blocks": 0,
+      "Shared Dirtied Blocks": 0,
+      "Shared Written Blocks": 0,
+      "Local Hit Blocks": 0,
+      "Local Read Blocks": 0,
+      "Local Dirtied Blocks": 0,
+      "Local Written Blocks": 0,
+      "Temp Read Blocks": 0,
+      "Temp Written Blocks": 0
+    },
+    "Planning Time": 0.086,
+    "Triggers": [],
+    "Execution Time": 29.634
+  },
+  "planText": "Sort  (cost=33315.20..33320.08 rows=1953 width=46) (actual time=29.493..29.564 rows=2000 loops=1)\n  Output: c.customer_id, c.email, ((SubPlan 1)), ((SubPlan 2))\n  Sort Key: ((SubPlan 1)) DESC\n  Sort Method: quicksort  Memory: 189kB\n  Buffers: shared hit=34440\n  ->  Seq Scan on shop.customers c  (cost=0.00..33208.45 rows=1953 width=46) (actual time=0.036..29.296 rows=2000 loops=1)\n        Output: c.customer_id, c.email, (SubPlan 1), (SubPlan 2)\n        Filter: (c.loyalty_tier = 'gold'::text)\n        Rows Removed by Filter: 198000\n        Buffers: shared hit=34440\n        SubPlan 1\n          ->  Aggregate  (cost=1.73..1.74 rows=1 width=8) (actual time=0.002..0.002 rows=1 loops=2000)\n                Output: count(*)\n                Buffers: shared hit=6001\n                ->  Index Only Scan using idx_orders_customer_id on shop.orders o  (cost=0.43..1.70 rows=10 width=0) (actual time=0.001..0.002 rows=10 loops=2000)\n                      Output: o.customer_id\n                      Index Cond: (o.customer_id = c.customer_id)\n                      Heap Fetches: 0\n                      Buffers: shared hit=6001\n        SubPlan 2\n          ->  Aggregate  (cost=12.73..12.74 rows=1 width=8) (actual time=0.006..0.006 rows=1 loops=2000)\n                Output: max(o2.created_at)\n                Buffers: shared hit=26000\n                ->  Index Scan using idx_orders_customer_id on shop.orders o2  (cost=0.43..12.70 rows=10 width=8) (actual time=0.001..0.006 rows=10 loops=2000)\n                      Output: o2.order_id, o2.customer_id, o2.status, o2.created_at, o2.shipped_at, o2.total_cents, o2.coupon_code\n                      Index Cond: (o2.customer_id = c.customer_id)\n                      Buffers: shared hit=26000\nSettings: work_mem = '32MB', random_page_cost = '1.1'\nPlanning Time: 0.090 ms\nExecution Time: 29.636 ms",
+  "executionMs": 29.634,
+  "planningMs": 0.086,
+  "medianMs": 31.459,
+  "runs": [
+    33.391,
+    31.459,
+    29.634
+  ],
+  "fingerprint": {
+    "rowCount": 2000,
+    "digest": "7b9e8e20d2190087",
+    "sample": [
+      {
+        "customer_id": "100",
+        "email": "user100@example.com",
+        "order_count": "10",
+        "last_order_at": "2025-11-26T21:13:07.000Z"
+      },
+      {
+        "customer_id": "200",
+        "email": "user200@example.com",
+        "order_count": "10",
+        "last_order_at": "2025-11-09T10:08:07.000Z"
+      },
+      {
+        "customer_id": "300",
+        "email": "user300@example.com",
+        "order_count": "10",
+        "last_order_at": "2025-10-22T23:03:07.000Z"
+      }
+    ]
+  }
+}

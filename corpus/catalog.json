@@ -1,0 +1,912 @@
+{
+  "dialect": "postgres",
+  "serverVersion": "16.14 (Debian 16.14-1.pgdg13+1)",
+  "tables": [
+    {
+      "schema": "shop",
+      "name": "categories",
+      "columns": [
+        {
+          "name": "category_id",
+          "dataType": "integer",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 4
+          }
+        },
+        {
+          "name": "name",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": -0.36580366,
+            "avgWidth": 12
+          }
+        },
+        {
+          "name": "parent_id",
+          "dataType": "integer",
+          "nullable": true,
+          "stats": {
+            "nullFrac": 0.05,
+            "nDistinct": 10,
+            "correlation": 0.12341062,
+            "avgWidth": 4,
+            "mostCommonValues": [
+              {
+                "value": "1",
+                "frequency": 0.095
+              },
+              {
+                "value": "2",
+                "frequency": 0.095
+              },
+              {
+                "value": "3",
+                "frequency": 0.095
+              },
+              {
+                "value": "4",
+                "frequency": 0.095
+              },
+              {
+                "value": "5",
+                "frequency": 0.095
+              },
+              {
+                "value": "6",
+                "frequency": 0.095
+              },
+              {
+                "value": "7",
+                "frequency": 0.095
+              },
+              {
+                "value": "8",
+                "frequency": 0.095
+              },
+              {
+                "value": "9",
+                "frequency": 0.095
+              },
+              {
+                "value": "10",
+                "frequency": 0.095
+              }
+            ]
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "categories_pkey",
+          "table": "categories",
+          "columns": [
+            "category_id"
+          ],
+          "unique": true,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 16384
+        }
+      ],
+      "rowCount": 200,
+      "sizeBytes": 65536,
+      "foreignKeys": [
+        {
+          "columns": [
+            "parent_id"
+          ],
+          "referencesTable": "categories",
+          "referencesColumns": [
+            "category_id"
+          ]
+        }
+      ],
+      "primaryKey": [
+        "category_id"
+      ]
+    },
+    {
+      "schema": "shop",
+      "name": "customers",
+      "columns": [
+        {
+          "name": "customer_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "email",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": -0.39201704,
+            "avgWidth": 22
+          }
+        },
+        {
+          "name": "full_name",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": -0.3919164,
+            "avgWidth": 15
+          }
+        },
+        {
+          "name": "country_code",
+          "dataType": "character(2)",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 5,
+            "correlation": 0.40858713,
+            "avgWidth": 3,
+            "mostCommonValues": [
+              {
+                "value": "US",
+                "frequency": 0.60136664
+              },
+              {
+                "value": "FR",
+                "frequency": 0.100266665
+              },
+              {
+                "value": "GB",
+                "frequency": 0.100266665
+              },
+              {
+                "value": "JP",
+                "frequency": 0.0995
+              },
+              {
+                "value": "DE",
+                "frequency": 0.0986
+              }
+            ]
+          }
+        },
+        {
+          "name": "signup_date",
+          "dataType": "date",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 2000,
+            "correlation": 0.012213199,
+            "avgWidth": 4,
+            "mostCommonValues": [
+              {
+                "value": "2022-11-11",
+                "frequency": 0.0009
+              },
+              {
+                "value": "2023-09-25",
+                "frequency": 0.0009
+              },
+              {
+                "value": "2019-07-01",
+                "frequency": 0.00086666667
+              },
+              {
+                "value": "2019-10-09",
+                "frequency": 0.00086666667
+              },
+              {
+                "value": "2020-11-28",
+                "frequency": 0.00086666667
+              },
+              {
+                "value": "2022-12-29",
+                "frequency": 0.00086666667
+              },
+              {
+                "value": "2019-01-22",
+                "frequency": 0.00083333335
+              },
+              {
+                "value": "2019-07-25",
+                "frequency": 0.00083333335
+              },
+              {
+                "value": "2019-10-26",
+                "frequency": 0.00083333335
+              },
+              {
+                "value": "2020-06-05",
+                "frequency": 0.00083333335
+              }
+            ]
+          }
+        },
+        {
+          "name": "is_active",
+          "dataType": "boolean",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 2,
+            "correlation": 0.9801027,
+            "avgWidth": 1,
+            "mostCommonValues": [
+              {
+                "value": "t",
+                "frequency": 0.99023336
+              },
+              {
+                "value": "f",
+                "frequency": 0.009766666
+              }
+            ]
+          }
+        },
+        {
+          "name": "loyalty_tier",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 3,
+            "correlation": 0.8686882,
+            "avgWidth": 6,
+            "mostCommonValues": [
+              {
+                "value": "bronze",
+                "frequency": 0.92936665
+              },
+              {
+                "value": "silver",
+                "frequency": 0.060866665
+              },
+              {
+                "value": "gold",
+                "frequency": 0.009766666
+              }
+            ]
+          }
+        },
+        {
+          "name": "last_login_at",
+          "dataType": "timestamp with time zone",
+          "nullable": true,
+          "stats": {
+            "nullFrac": 0.07656667,
+            "nDistinct": -0.9234333,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "customers_pkey",
+          "table": "customers",
+          "columns": [
+            "customer_id"
+          ],
+          "unique": true,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 4513792
+        }
+      ],
+      "rowCount": 200000,
+      "sizeBytes": 24535040,
+      "primaryKey": [
+        "customer_id"
+      ]
+    },
+    {
+      "schema": "shop",
+      "name": "events",
+      "columns": [
+        {
+          "name": "event_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "customer_id",
+          "dataType": "bigint",
+          "nullable": true,
+          "stats": {
+            "nullFrac": 0.14503333,
+            "nDistinct": 202750,
+            "correlation": -0.0018892052,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "event_type",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 3,
+            "correlation": 0.81501377,
+            "avgWidth": 10,
+            "mostCommonValues": [
+              {
+                "value": "page_view",
+                "frequency": 0.8998
+              },
+              {
+                "value": "add_to_cart",
+                "frequency": 0.081533335
+              },
+              {
+                "value": "checkout",
+                "frequency": 0.018666666
+              }
+            ]
+          }
+        },
+        {
+          "name": "occurred_at",
+          "dataType": "timestamp with time zone",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "payload",
+          "dataType": "jsonb",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -0.35658863,
+            "correlation": 0.021489501,
+            "avgWidth": 57
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "events_pkey",
+          "table": "events",
+          "columns": [
+            "event_id"
+          ],
+          "unique": true,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 112328704
+        }
+      ],
+      "rowCount": 5000022,
+      "sizeBytes": 770695168,
+      "foreignKeys": [
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "referencesTable": "customers",
+          "referencesColumns": [
+            "customer_id"
+          ]
+        }
+      ],
+      "primaryKey": [
+        "event_id"
+      ]
+    },
+    {
+      "schema": "shop",
+      "name": "order_items",
+      "columns": [
+        {
+          "name": "order_item_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 0.3421942,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "order_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -0.37087935,
+            "correlation": 0.3421942,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "product_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 49282,
+            "correlation": 0.0019475748,
+            "avgWidth": 8,
+            "mostCommonValues": [
+              {
+                "value": "29881",
+                "frequency": 0.00023333334
+              },
+              {
+                "value": "5557",
+                "frequency": 0.0002
+              },
+              {
+                "value": "7178",
+                "frequency": 0.0002
+              },
+              {
+                "value": "16335",
+                "frequency": 0.0002
+              },
+              {
+                "value": "18654",
+                "frequency": 0.0002
+              }
+            ]
+          }
+        },
+        {
+          "name": "quantity",
+          "dataType": "integer",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 5,
+            "correlation": 0.20271997,
+            "avgWidth": 4,
+            "mostCommonValues": [
+              {
+                "value": "1",
+                "frequency": 0.20336667
+              },
+              {
+                "value": "3",
+                "frequency": 0.2022
+              },
+              {
+                "value": "5",
+                "frequency": 0.19883333
+              },
+              {
+                "value": "4",
+                "frequency": 0.19843334
+              },
+              {
+                "value": "2",
+                "frequency": 0.19716667
+              }
+            ]
+          }
+        },
+        {
+          "name": "unit_price_cents",
+          "dataType": "integer",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 196104,
+            "correlation": -0.003519239,
+            "avgWidth": 4
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "order_items_pkey",
+          "table": "order_items",
+          "columns": [
+            "order_item_id"
+          ],
+          "unique": true,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 179716096
+        },
+        {
+          "name": "idx_order_items_order_id",
+          "table": "order_items",
+          "columns": [
+            "order_id"
+          ],
+          "unique": false,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 134774784
+        }
+      ],
+      "rowCount": 5999977,
+      "sizeBytes": 676028416,
+      "foreignKeys": [
+        {
+          "columns": [
+            "product_id"
+          ],
+          "referencesTable": "products",
+          "referencesColumns": [
+            "product_id"
+          ]
+        },
+        {
+          "columns": [
+            "order_id"
+          ],
+          "referencesTable": "orders",
+          "referencesColumns": [
+            "order_id"
+          ]
+        }
+      ],
+      "primaryKey": [
+        "order_item_id"
+      ]
+    },
+    {
+      "schema": "shop",
+      "name": "orders",
+      "columns": [
+        {
+          "name": "order_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "customer_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -0.100906,
+            "correlation": 0.0033842816,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "status",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 4,
+            "correlation": 0.7398115,
+            "avgWidth": 8,
+            "mostCommonValues": [
+              {
+                "value": "complete",
+                "frequency": 0.8499333
+              },
+              {
+                "value": "shipped",
+                "frequency": 0.0887
+              },
+              {
+                "value": "pending",
+                "frequency": 0.0509
+              },
+              {
+                "value": "cancelled",
+                "frequency": 0.010466667
+              }
+            ]
+          }
+        },
+        {
+          "name": "created_at",
+          "dataType": "timestamp with time zone",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "shipped_at",
+          "dataType": "timestamp with time zone",
+          "nullable": true,
+          "stats": {
+            "nullFrac": 0.061366666,
+            "nDistinct": -0.9386333,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "total_cents",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -0.242697,
+            "correlation": 0.027848244,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "coupon_code",
+          "dataType": "text",
+          "nullable": true,
+          "stats": {
+            "nullFrac": 0.8019,
+            "nDistinct": 10,
+            "correlation": 0.09417368,
+            "avgWidth": 7,
+            "mostCommonValues": [
+              {
+                "value": "PROMO15",
+                "frequency": 0.0209
+              },
+              {
+                "value": "PROMO25",
+                "frequency": 0.020533333
+              },
+              {
+                "value": "PROMO20",
+                "frequency": 0.020366667
+              },
+              {
+                "value": "PROMO40",
+                "frequency": 0.020333333
+              },
+              {
+                "value": "PROMO0",
+                "frequency": 0.02
+              },
+              {
+                "value": "PROMO35",
+                "frequency": 0.0199
+              },
+              {
+                "value": "PROMO45",
+                "frequency": 0.0197
+              },
+              {
+                "value": "PROMO5",
+                "frequency": 0.019633334
+              },
+              {
+                "value": "PROMO30",
+                "frequency": 0.019066667
+              },
+              {
+                "value": "PROMO10",
+                "frequency": 0.017666666
+              }
+            ]
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "orders_pkey",
+          "table": "orders",
+          "columns": [
+            "order_id"
+          ],
+          "unique": true,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 44941312
+        },
+        {
+          "name": "idx_orders_customer_id",
+          "table": "orders",
+          "columns": [
+            "customer_id"
+          ],
+          "unique": false,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 19259392
+        }
+      ],
+      "rowCount": 2000000,
+      "sizeBytes": 233283584,
+      "foreignKeys": [
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "referencesTable": "customers",
+          "referencesColumns": [
+            "customer_id"
+          ]
+        }
+      ],
+      "primaryKey": [
+        "order_id"
+      ]
+    },
+    {
+      "schema": "shop",
+      "name": "products",
+      "columns": [
+        {
+          "name": "product_id",
+          "dataType": "bigint",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 8
+          }
+        },
+        {
+          "name": "sku",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 1,
+            "avgWidth": 13
+          }
+        },
+        {
+          "name": "name",
+          "dataType": "text",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 0.32486218,
+            "avgWidth": 13
+          }
+        },
+        {
+          "name": "category_id",
+          "dataType": "integer",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 200,
+            "correlation": 0.0075611603,
+            "avgWidth": 4,
+            "mostCommonValues": [
+              {
+                "value": "118",
+                "frequency": 0.0057333335
+              },
+              {
+                "value": "38",
+                "frequency": 0.005633333
+              },
+              {
+                "value": "182",
+                "frequency": 0.005633333
+              },
+              {
+                "value": "84",
+                "frequency": 0.005566667
+              },
+              {
+                "value": "157",
+                "frequency": 0.005566667
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_cents",
+          "dataType": "integer",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -1,
+            "correlation": 0.04351388,
+            "avgWidth": 4
+          }
+        },
+        {
+          "name": "is_discontinued",
+          "dataType": "boolean",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": 2,
+            "correlation": 0.9038701,
+            "avgWidth": 1,
+            "mostCommonValues": [
+              {
+                "value": "f",
+                "frequency": 0.9499
+              },
+              {
+                "value": "t",
+                "frequency": 0.0501
+              }
+            ]
+          }
+        },
+        {
+          "name": "attributes",
+          "dataType": "jsonb",
+          "nullable": false,
+          "stats": {
+            "nullFrac": 0,
+            "nDistinct": -0.10002,
+            "correlation": 0.02825941,
+            "avgWidth": 47
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "products_pkey",
+          "table": "products",
+          "columns": [
+            "product_id"
+          ],
+          "unique": true,
+          "method": "btree",
+          "expressions": [],
+          "sizeBytes": 1138688
+        }
+      ],
+      "rowCount": 50000,
+      "sizeBytes": 7487488,
+      "foreignKeys": [
+        {
+          "columns": [
+            "category_id"
+          ],
+          "referencesTable": "categories",
+          "referencesColumns": [
+            "category_id"
+          ]
+        }
+      ],
+      "primaryKey": [
+        "product_id"
+      ]
+    }
+  ],
+  "settings": {
+    "default_statistics_target": "100",
+    "effective_cache_size": "5242888kB",
+    "enable_seqscan": "on",
+    "jit": "on",
+    "max_parallel_workers_per_gather": "2",
+    "random_page_cost": "1.1",
+    "seq_page_cost": "1",
+    "shared_buffers": "655368kB",
+    "work_mem": "32768kB"
+  }
+}

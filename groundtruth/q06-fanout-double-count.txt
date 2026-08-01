@@ -1,0 +1,119 @@
+-- q06-fanout-double-count: Revenue per customer joined through order_items
+-- median execution: 2401.6 ms (runs: 2446, 2339, 2402 ms), planning: 0.22 ms
+-- rows returned (complete result): 100
+
+SELECT c.customer_id,
+       c.email,
+       sum(o.total_cents) AS revenue_cents,
+       count(*) AS item_count
+FROM shop.customers c
+JOIN shop.orders o ON o.customer_id = c.customer_id
+JOIN shop.order_items oi ON oi.order_id = o.order_id
+WHERE o.status = 'complete'
+GROUP BY c.customer_id, c.email
+ORDER BY revenue_cents DESC
+LIMIT 100;
+
+Limit  (cost=199824.42..199824.67 rows=100 width=70) (actual time=2418.116..2425.900 rows=100 loops=1)
+  Output: c.customer_id, c.email, (sum(o.total_cents)), (count(*))
+  Buffers: shared hit=23453 read=43734
+  ->  Sort  (cost=199824.42..200324.42 rows=200000 width=70) (actual time=2412.701..2420.479 rows=100 loops=1)
+        Output: c.customer_id, c.email, (sum(o.total_cents)), (count(*))
+        Sort Key: (sum(o.total_cents)) DESC
+        Sort Method: top-N heapsort  Memory: 36kB
+        Buffers: shared hit=23453 read=43734
+        ->  Finalize HashAggregate  (cost=189680.56..192180.56 rows=200000 width=70) (actual time=2369.031..2403.560 rows=170000 loops=1)
+              Output: c.customer_id, c.email, sum(o.total_cents), count(*)
+              Group Key: c.customer_id
+              Batches: 1  Memory Usage: 36881kB
+              Buffers: shared hit=23453 read=43734
+              ->  Gather  (cost=143180.56..185680.56 rows=400000 width=70) (actual time=2114.221..2181.705 rows=510000 loops=1)
+                    Output: c.customer_id, c.email, (PARTIAL sum(o.total_cents)), (PARTIAL count(*))
+                    Workers Planned: 2
+                    Workers Launched: 2
+                    Buffers: shared hit=23453 read=43734
+                    ->  Partial HashAggregate  (cost=142180.56..144680.56 rows=200000 width=70) (actual time=2104.048..2133.237 rows=170000 loops=3)
+                          Output: c.customer_id, c.email, PARTIAL sum(o.total_cents), PARTIAL count(*)
+                          Group Key: c.customer_id
+                          Batches: 1  Memory Usage: 36881kB
+                          Buffers: shared hit=23453 read=43734
+                          Worker 0:  actual time=2097.865..2136.210 rows=170000 loops=1
+                            Batches: 1  Memory Usage: 36881kB
+                            JIT:
+                              Functions: 24
+                              Options: Inlining false, Optimization false, Expressions true, Deforming true
+                              Timing: Generation 0.799 ms, Inlining 0.000 ms, Optimization 0.221 ms, Emission 5.288 ms, Total 6.307 ms
+                            Buffers: shared hit=7379 read=14582
+                          Worker 1:  actual time=2100.189..2124.653 rows=170000 loops=1
+                            Batches: 1  Memory Usage: 36881kB
+                            JIT:
+                              Functions: 24
+                              Options: Inlining false, Optimization false, Expressions true, Deforming true
+                              Timing: Generation 0.812 ms, Inlining 0.000 ms, Optimization 0.306 ms, Emission 5.770 ms, Total 6.888 ms
+                            Buffers: shared hit=7446 read=14592
+                          ->  Parallel Hash Join  (cost=44986.20..126244.38 rows=2124825 width=38) (actual time=200.045..1679.258 rows=1700000 loops=3)
+                                Output: c.customer_id, c.email, o.total_cents
+                                Inner Unique: true
+                                Hash Cond: (o.customer_id = c.customer_id)
+                                Buffers: shared hit=23453 read=43734
+                                Worker 0:  actual time=194.294..1674.020 rows=1700837 loops=1
+                                  Buffers: shared hit=7379 read=14582
+                                Worker 1:  actual time=196.627..1678.315 rows=1702378 loops=1
+                                  Buffers: shared hit=7446 read=14592
+                                ->  Parallel Hash Join  (cost=39900.14..115580.53 rows=2124825 width=16) (actual time=181.176..1058.901 rows=1700000 loops=3)
+                                      Output: o.total_cents, o.customer_id
+                                      Inner Unique: true
+                                      Hash Cond: (oi.order_id = o.order_id)
+                                      Buffers: shared hit=21014 read=43734
+                                      Worker 0:  actual time=181.176..1059.409 rows=1700837 loops=1
+                                        Buffers: shared hit=6998 read=14582
+                                      Worker 1:  actual time=181.188..1059.660 rows=1702378 loops=1
+                                        Buffers: shared hit=6978 read=14592
+                                      ->  Parallel Seq Scan on shop.order_items oi  (cost=0.00..69117.90 rows=2499990 width=8) (actual time=0.042..170.394 rows=2000000 loops=3)
+                                            Output: oi.order_item_id, oi.order_id, oi.product_id, oi.quantity, oi.unit_price_cents
+                                            Buffers: shared hit=384 read=43734
+                                            Worker 0:  actual time=0.059..170.322 rows=2000832 loops=1
+                                              Buffers: shared hit=130 read=14582
+                                            Worker 1:  actual time=0.039..172.376 rows=2002688 loops=1
+                                              Buffers: shared hit=134 read=14592
+                                      ->  Parallel Hash  (cost=31046.67..31046.67 rows=708278 width=24) (actual time=179.564..179.573 rows=566667 loops=3)
+                                            Output: o.total_cents, o.customer_id, o.order_id
+                                            Buckets: 2097152  Batches: 1  Memory Usage: 109600kB
+                                            Buffers: shared hit=20630
+                                            Worker 0:  actual time=176.589..176.590 rows=565989 loops=1
+                                              Buffers: shared hit=6868
+                                            Worker 1:  actual time=181.038..181.065 rows=563974 loops=1
+                                              Buffers: shared hit=6844
+                                            ->  Parallel Seq Scan on shop.orders o  (cost=0.00..31046.67 rows=708278 width=24) (actual time=0.025..59.574 rows=566667 loops=3)
+                                                  Output: o.total_cents, o.customer_id, o.order_id
+                                                  Filter: (o.status = 'complete'::text)
+                                                  Rows Removed by Filter: 100000
+                                                  Buffers: shared hit=20630
+                                                  Worker 0:  actual time=0.027..61.496 rows=565989 loops=1
+                                                    Buffers: shared hit=6868
+                                                  Worker 1:  actual time=0.026..60.861 rows=563974 loops=1
+                                                    Buffers: shared hit=6844
+                                ->  Parallel Hash  (cost=3615.47..3615.47 rows=117647 width=30) (actual time=18.662..18.662 rows=66667 loops=3)
+                                      Output: c.customer_id, c.email
+                                      Buckets: 262144  Batches: 1  Memory Usage: 14656kB
+                                      Buffers: shared hit=2439
+                                      Worker 0:  actual time=13.085..13.086 rows=31242 loops=1
+                                        Buffers: shared hit=381
+                                      Worker 1:  actual time=15.379..15.379 rows=38376 loops=1
+                                        Buffers: shared hit=468
+                                      ->  Parallel Seq Scan on shop.customers c  (cost=0.00..3615.47 rows=117647 width=30) (actual time=3.834..8.645 rows=66667 loops=3)
+                                            Output: c.customer_id, c.email
+                                            Buffers: shared hit=2439
+                                            Worker 0:  actual time=5.458..7.935 rows=31242 loops=1
+                                              Buffers: shared hit=381
+                                            Worker 1:  actual time=6.030..9.071 rows=38376 loops=1
+                                              Buffers: shared hit=468
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning:
+  Buffers: shared hit=34
+Planning Time: 0.280 ms
+JIT:
+  Functions: 77
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 2.053 ms, Inlining 0.000 ms, Optimization 0.801 ms, Emission 16.326 ms, Total 19.181 ms
+Execution Time: 2428.465 ms

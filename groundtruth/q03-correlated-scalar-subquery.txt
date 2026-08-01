@@ -1,0 +1,42 @@
+-- q03-correlated-scalar-subquery: Per-customer order counts via correlated scalar subqueries
+-- median execution: 31.5 ms (runs: 33, 31, 30 ms), planning: 0.09 ms
+-- rows returned (complete result): 2000
+
+SELECT c.customer_id,
+       c.email,
+       (SELECT count(*) FROM shop.orders o WHERE o.customer_id = c.customer_id) AS order_count,
+       (SELECT max(o2.created_at) FROM shop.orders o2 WHERE o2.customer_id = c.customer_id) AS last_order_at
+FROM shop.customers c
+WHERE c.loyalty_tier = 'gold'
+ORDER BY order_count DESC;
+
+Sort  (cost=33315.20..33320.08 rows=1953 width=46) (actual time=29.493..29.564 rows=2000 loops=1)
+  Output: c.customer_id, c.email, ((SubPlan 1)), ((SubPlan 2))
+  Sort Key: ((SubPlan 1)) DESC
+  Sort Method: quicksort  Memory: 189kB
+  Buffers: shared hit=34440
+  ->  Seq Scan on shop.customers c  (cost=0.00..33208.45 rows=1953 width=46) (actual time=0.036..29.296 rows=2000 loops=1)
+        Output: c.customer_id, c.email, (SubPlan 1), (SubPlan 2)
+        Filter: (c.loyalty_tier = 'gold'::text)
+        Rows Removed by Filter: 198000
+        Buffers: shared hit=34440
+        SubPlan 1
+          ->  Aggregate  (cost=1.73..1.74 rows=1 width=8) (actual time=0.002..0.002 rows=1 loops=2000)
+                Output: count(*)
+                Buffers: shared hit=6001
+                ->  Index Only Scan using idx_orders_customer_id on shop.orders o  (cost=0.43..1.70 rows=10 width=0) (actual time=0.001..0.002 rows=10 loops=2000)
+                      Output: o.customer_id
+                      Index Cond: (o.customer_id = c.customer_id)
+                      Heap Fetches: 0
+                      Buffers: shared hit=6001
+        SubPlan 2
+          ->  Aggregate  (cost=12.73..12.74 rows=1 width=8) (actual time=0.006..0.006 rows=1 loops=2000)
+                Output: max(o2.created_at)
+                Buffers: shared hit=26000
+                ->  Index Scan using idx_orders_customer_id on shop.orders o2  (cost=0.43..12.70 rows=10 width=8) (actual time=0.001..0.006 rows=10 loops=2000)
+                      Output: o2.order_id, o2.customer_id, o2.status, o2.created_at, o2.shipped_at, o2.total_cents, o2.coupon_code
+                      Index Cond: (o2.customer_id = c.customer_id)
+                      Buffers: shared hit=26000
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning Time: 0.090 ms
+Execution Time: 29.636 ms

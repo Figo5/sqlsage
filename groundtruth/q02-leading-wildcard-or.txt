@@ -1,0 +1,36 @@
+-- q02-leading-wildcard-or: Customer search with leading wildcard and OR across columns
+-- median execution: 22.4 ms (runs: 22, 25, 22 ms), planning: 0.08 ms
+-- rows returned (complete result): 50
+
+SELECT customer_id, email, full_name
+FROM shop.customers
+WHERE email LIKE '%@example.com'
+   OR full_name LIKE 'Customer 1%'
+ORDER BY signup_date DESC
+LIMIT 50;
+
+Limit  (cost=9111.70..9117.45 rows=50 width=49) (actual time=21.110..22.297 rows=50 loops=1)
+  Output: customer_id, email, full_name, signup_date
+  Buffers: shared hit=2476
+  ->  Gather Merge  (cost=9111.70..22640.53 rows=117642 width=49) (actual time=21.109..22.290 rows=50 loops=1)
+        Output: customer_id, email, full_name, signup_date
+        Workers Planned: 1
+        Workers Launched: 1
+        Buffers: shared hit=2476
+        ->  Sort  (cost=8111.69..8405.79 rows=117642 width=49) (actual time=20.373..20.375 rows=48 loops=2)
+              Output: customer_id, email, full_name, signup_date
+              Sort Key: customers.signup_date DESC
+              Sort Method: top-N heapsort  Memory: 34kB
+              Buffers: shared hit=2476
+              Worker 0:  actual time=19.753..19.755 rows=50 loops=1
+                Sort Method: top-N heapsort  Memory: 35kB
+                Buffers: shared hit=1187
+              ->  Parallel Seq Scan on shop.customers  (cost=0.00..4203.71 rows=117642 width=49) (actual time=0.005..12.044 rows=100000 loops=2)
+                    Output: customer_id, email, full_name, signup_date
+                    Filter: ((customers.email ~~ '%@example.com'::text) OR (customers.full_name ~~ 'Customer 1%'::text))
+                    Buffers: shared hit=2439
+                    Worker 0:  actual time=0.008..11.815 rows=94300 loops=1
+                      Buffers: shared hit=1150
+Settings: work_mem = '32MB', random_page_cost = '1.1'
+Planning Time: 0.061 ms
+Execution Time: 22.336 ms
