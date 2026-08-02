@@ -86,9 +86,12 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
   (with `--database-url`) server version, authentication, read-only `EXPLAIN`, schema
   visibility, table read permission, and planner statistics. Strictly read-only; refuses
   `--analyze`. Exits 0 all-pass, 1 on any failure.
-- Improve error messages with exact corrective commands. **Partly done** — every
-  `doctor` failure prints an exact corrective command. The `analyze` path's usage,
-  catalog, schema, and plan errors have not yet been given the same treatment.
+- Improve error messages with exact corrective commands. **Done.** Every `doctor`
+  failure prints one, and `analyze` now does too: catalog, schema, plan and connection
+  failures route to the `doctor` invocation that validates that input deeply and prints
+  its own fix, and usage errors get a runnable example instead of a bare pointer to
+  `--help`. Nothing is invented — a missing `--query` file next to a healthy `--catalog`
+  suggests nothing rather than sending the reader to validate the file that is fine.
 - Create three complete tutorials:
   - catching a wrong-result `NOT IN` query;
   - fixing a non-sargable date predicate; and

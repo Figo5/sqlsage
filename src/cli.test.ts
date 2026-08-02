@@ -253,3 +253,66 @@ test('help documents demo and doctor as first steps', () => {
   assert.match(help.stdout, /sqlsage demo/);
   assert.match(help.stdout, /sqlsage doctor/);
 });
+
+test('analyze failures carry an exact corrective command', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sqlsage-fix-'));
+  try {
+    const malformed = join(dir, 'bad.json');
+    writeFileSync(malformed, '{"tables": []}');
+
+    // Input failures route to doctor, which validates that input type deeply and
+    // prints its own corrective command, rather than restating a partial diagnosis.
+    const badCatalog = run(['analyze', '--sql', 'SELECT 1', '--catalog', malformed]);
+    assert.equal(badCatalog.status, 1);
+    assert.match(badCatalog.stderr, new RegExp(`try: sqlsage doctor --catalog ${malformed}`));
+
+    const missingSchema = run(['analyze', '--sql', 'SELECT 1', '--schema', join(dir, 'nope.sql')]);
+    assert.equal(missingSchema.status, 1);
+    assert.match(missingSchema.stderr, /try: sqlsage doctor --schema .*nope\.sql/);
+
+    const missingPlan = run(['analyze', '--corpus', 'q01', '--plan', join(dir, 'nope.json')]);
+    assert.equal(missingPlan.status, 1);
+    assert.match(missingPlan.stderr, /try: sqlsage doctor --plan .*nope\.json/);
+
+    const unreachable = run(['analyze', '--sql', 'SELECT 1', '--database-url', 'postgresql://nobody@127.0.0.1:1/none']);
+    assert.equal(unreachable.status, 1);
+    assert.match(unreachable.stderr, /try: sqlsage doctor --database-url .* --schema-name public/);
+
+    // Usage errors get a runnable example rather than a bare pointer to --help.
+    const noMetadata = run(['analyze', '--sql', 'SELECT 1']);
+    assert.equal(noMetadata.status, 1);
+    assert.match(noMetadata.stderr, /try: sqlsage analyze --query query\.sql --schema schema\.sql/);
+
+    // A message that already names a command is not given a second, vaguer one.
+    const badCorpus = run(['analyze', '--corpus', 'zz9']);
+    assert.equal(badCorpus.status, 1);
+    assert.match(badCorpus.stderr, /run sqlsage list/);
+    assert.doesNotMatch(badCorpus.stderr, /try: /);
+
+    // Paths needing quoting stay copy-pasteable.
+    const spaced = join(dir, 'my catalog.json');
+    writeFileSync(spaced, '{"tables": []}');
+    assert.match(run(['analyze', '--sql', 'SELECT 1', '--catalog', spaced]).stderr, /try: sqlsage doctor --catalog '.*my catalog\.json'/);
+
+    for (const result of [badCatalog, missingSchema, missingPlan, unreachable, noMetadata, badCorpus]) {
+      assert.doesNotMatch(result.stderr, /at .*\.ts:\d+/); // no stack traces
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('no corrective command is invented when none is knowable', () => {
+  // An invented command costs a round trip and teaches the wrong thing, so the
+  // failure stands alone rather than guessing.
+  const dir = mkdtempSync(join(tmpdir(), 'sqlsage-nofix-'));
+  try {
+    const missingQuery = run(['analyze', '--query', join(dir, 'nope.sql'), '--catalog', CATALOG]);
+    assert.equal(missingQuery.status, 1);
+    assert.match(missingQuery.stderr, /file not found/);
+    // Nothing sensible to suggest for a query file we cannot validate.
+    assert.doesNotMatch(missingQuery.stderr, /try: /);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

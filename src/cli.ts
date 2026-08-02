@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import packageJson from '../package.json' with { type: 'json' };
 import { CORPUS } from '../corpus/queries.ts';
 import { CatalogInputError, loadCatalog, validateCatalog } from './catalog.ts';
 import { CliUsageError, parseCliArgs } from './cli-args.ts';
-import type { AnalyzeCliOptions, DemoCliOptions, DoctorCliOptions, OutputFormat, QuerySource } from './cli-args.ts';
+import type { AnalyzeCliOptions, CliOptions, DemoCliOptions, DoctorCliOptions, OutputFormat, QuerySource } from './cli-args.ts';
 import { analyze } from './index.ts';
 import { bindQuery } from './ir/index.ts';
 import { collectLiveEvidence, LiveInputError } from './live.ts';
@@ -206,8 +207,7 @@ async function runAnalysis(options: AnalyzeCliOptions, io: CliIo): Promise<numbe
     }
     const message = error instanceof Error ? error.message : String(error);
     const prefix = options.databaseUrl ? 'database connection or EXPLAIN failed' : 'analysis failed';
-    io.stderr.write(`sqlsage: ${prefix}: ${message}\n`);
-    return 1;
+    return writeFailure(io, `${prefix}: ${message}`, correctiveCommand(error, options));
   }
 
   const hardBinding = result.analysis.ir.bindingErrors.filter((error) => error.severity === 'error');
@@ -230,6 +230,80 @@ async function runAnalysis(options: AnalyzeCliOptions, io: CliIo): Promise<numbe
     io.stderr.write(`sqlsage: analysis is incomplete because modules ${result.missingModules.join(', ')} did not run\n`);
   }
   return blocked ? 2 : 0;
+}
+
+/** Quote only when needed, so the common case stays copy-pasteable as written. */
+function shellArg(value: string): string {
+  return /^[A-Za-z0-9_./:@-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The exact command that moves the user forward, or undefined when none is
+ * knowable. An invented command is worse than none: it costs a round trip and
+ * teaches the wrong thing about the tool.
+ *
+ * Input failures route to `doctor`, which already validates that input type deeply
+ * and prints its own corrective command, rather than restating a partial diagnosis
+ * here where it would drift out of step.
+ */
+function correctiveCommand(error: unknown, options: CliOptions | undefined): string | undefined {
+  const analyze = options?.command === 'analyze' ? options : undefined;
+
+  if (error instanceof CatalogInputError && analyze?.catalogPath) {
+    return `sqlsage doctor --catalog ${shellArg(analyze.catalogPath)}`;
+  }
+  if (error instanceof SchemaInputError && analyze?.schemaPath) {
+    return `sqlsage doctor --schema ${shellArg(analyze.schemaPath)}`;
+  }
+  if (error instanceof PlanInputError && analyze?.planPath) {
+    return `sqlsage doctor --plan ${shellArg(analyze.planPath)}`;
+  }
+  if (error instanceof LiveInputError && analyze?.databaseUrl) {
+    return `sqlsage doctor --database-url ${shellArg(analyze.databaseUrl)} --schema-name ${shellArg(analyze.schemaName)}`;
+  }
+
+  if (error instanceof CliUsageError) {
+    // Messages that already name a command carry better context than a generic one.
+    if (/\bsqlsage\b/.test(error.message)) return undefined;
+    if (/requires --catalog, --schema, --plan, or --database-url/.test(error.message)) {
+      return 'sqlsage analyze --query query.sql --schema schema.sql    # or --catalog, --plan, --database-url';
+    }
+    if (/provide exactly one query source/.test(error.message)) {
+      return 'sqlsage analyze --query query.sql --schema schema.sql';
+    }
+    return "sqlsage --help";
+  }
+
+  // A missing file is only actionable once we know WHICH input it was. Matching on
+  // the failing path rather than on whichever flag happens to be set matters: a
+  // missing --query file alongside a healthy --catalog would otherwise send the user
+  // to validate the file that is fine.
+  const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined;
+  const failedPath = error && typeof error === 'object' && 'path' in error
+    ? String((error as { path: unknown }).path)
+    : undefined;
+  if (code === 'ENOENT' && analyze && failedPath) {
+    const flagFor: Array<[string | undefined, string]> = [
+      [analyze.catalogPath, '--catalog'],
+      [analyze.schemaPath, '--schema'],
+      [analyze.planPath, '--plan'],
+    ];
+    for (const [path, flag] of flagFor) {
+      if (path && resolve(path) === resolve(failedPath)) return `sqlsage doctor ${flag} ${shellArg(path)}`;
+    }
+    return undefined;
+  }
+
+  // Anything else that went wrong while connected is worth checking end to end.
+  if (analyze?.databaseUrl) {
+    return `sqlsage doctor --database-url ${shellArg(analyze.databaseUrl)} --schema-name ${shellArg(analyze.schemaName)}`;
+  }
+  return undefined;
+}
+
+function writeFailure(io: CliIo, message: string, fix: string | undefined): number {
+  io.stderr.write(`sqlsage: ${message}\n${fix ? `try: ${fix}\n` : ''}`);
+  return 1;
 }
 
 async function runDemo(options: DemoCliOptions, io: CliIo): Promise<number> {
@@ -277,8 +351,9 @@ async function runDoctor(options: DoctorCliOptions, io: CliIo): Promise<number> 
 }
 
 export async function runCli(argv: string[], io: CliIo = processIo): Promise<number> {
+  let options: CliOptions | undefined;
   try {
-    const options = parseCliArgs(argv, io.stdin.isTTY === true);
+    options = parseCliArgs(argv, io.stdin.isTTY === true);
     if (options.command === 'help') {
       io.stdout.write(HELP);
       return 0;
@@ -302,14 +377,12 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
       error instanceof PlanInputError ||
       error instanceof LiveInputError
     ) {
-      io.stderr.write(`sqlsage: ${error.message}\nTry 'sqlsage --help' for usage.\n`);
-      return 1;
+      return writeFailure(io, error.message, correctiveCommand(error, options));
     }
     const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined;
     const message = error instanceof Error ? error.message : String(error);
     const prefix = code === 'ENOENT' ? 'file not found' : 'input error';
-    io.stderr.write(`sqlsage: ${prefix}: ${message}\n`);
-    return 1;
+    return writeFailure(io, `${prefix}: ${message}`, correctiveCommand(error, options));
   }
 }
 
