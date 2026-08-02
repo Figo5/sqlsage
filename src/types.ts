@@ -71,6 +71,15 @@ export interface ForeignKey {
 export interface Table {
   schema: string;
   name: string;
+  /**
+   * What kind of relation this is. Absent means an ordinary table, so existing
+   * producers stay valid.
+   *
+   * A plain `view` has no storage: an index cannot be created on it, and a consumer
+   * proposing one would be emitting DDL PostgreSQL rejects. A `materialized-view` is
+   * physical and can be indexed like a table.
+   */
+  kind?: 'table' | 'view' | 'materialized-view';
   columns: Column[];
   primaryKey?: string[];
   foreignKeys?: ForeignKey[];

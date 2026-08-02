@@ -134,3 +134,23 @@ test('no M4 evidence means no index, and an equivalent catalog index is not dupl
   });
   assert.deepEqual(corpusAdvice('q01', extended), []);
 });
+
+test('no index is recommended for a plain view, which has no storage to index', async () => {
+  const { loadCatalog } = await import('../catalog.ts');
+  const { analyze } = await import('../index.ts');
+  const { CORPUS } = await import('../../corpus/queries.ts');
+  const query = CORPUS.find((entry) => entry.id.startsWith('q01'))!;
+  const base = await loadCatalog(new URL('../../corpus/catalog.json', import.meta.url).pathname);
+
+  // The same query against the same shape, differing only in relation kind.
+  assert.ok(analyze(query.sql, base).analysis.indexes.length > 0, 'baseline table must yield advice');
+
+  const asView = structuredClone(base);
+  asView.tables.find((table) => table.name === 'orders')!.kind = 'view';
+  assert.equal(analyze(query.sql, asView).analysis.indexes.length, 0);
+
+  // A materialized view is physical and can be indexed, so it must NOT be excluded.
+  const asMaterialized = structuredClone(base);
+  asMaterialized.tables.find((table) => table.name === 'orders')!.kind = 'materialized-view';
+  assert.ok(analyze(query.sql, asMaterialized).analysis.indexes.length > 0);
+});

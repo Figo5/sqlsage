@@ -117,13 +117,13 @@ test('safely ignores comments and DROP SCHEMA', () => {
 });
 
 test('rejects unsupported DDL rather than returning a partial catalog', () => {
-  // This case used to assert that ALTER TABLE was rejected outright. ALTER TABLE is
-  // now supported, so the assertion was replaced with DDL that is still unsupported
-  // rather than deleted -- the point of the test is that unknown DDL fails loudly.
+  // ALTER TABLE, then CREATE VIEW, have each in turn become supported and been
+  // replaced here rather than deleted -- the point of the test is that unknown DDL
+  // fails loudly, so it always needs a statement that is genuinely still unknown.
   assert.throws(
-    () => parseSchemaCatalog('CREATE TABLE t (id int); CREATE VIEW v AS SELECT id FROM t;'),
+    () => parseSchemaCatalog('CREATE TABLE t (id int); CREATE RULE r AS ON DELETE TO t DO INSTEAD NOTHING;'),
     (error: unknown) => error instanceof SchemaInputError
-      && /statement 2: unsupported statement CREATE VIEW v/.test(error.message),
+      && /statement 2: unsupported statement CREATE RULE r/.test(error.message),
   );
   // CHECK used to be rejected here. It is now accepted (and not modelled), so this
   // asserts on COLLATE instead -- still unsupported, so the test keeps its point.
@@ -301,8 +301,9 @@ test('ignoring dump noise is an allowlist, not a catch-all', () => {
   // skipped what it did not understand would return a catalog silently missing keys
   // or indexes, and every downstream uniqueness and fan-out claim would inherit it.
   const cases: [string, RegExp][] = [
-    ['CREATE TABLE t (id int); CREATE VIEW v AS SELECT id FROM t;', /unsupported statement CREATE VIEW/],
-    ['CREATE TABLE t (id int); CREATE MATERIALIZED VIEW mv AS SELECT id FROM t;', /unsupported statement CREATE MATERIALIZED VIEW/],
+    // Views are supported now; these keep the case pointed at genuinely unknown DDL.
+    ['CREATE TABLE t (id int); CREATE POLICY p ON t USING (true);', /unsupported statement CREATE POLICY/],
+    ['CREATE TABLE t (id int); LOCK TABLE t;', /unsupported statement LOCK TABLE/],
     // PARTITION BY used to be rejected here and is now supported; INHERITS stands in
     // so the case still proves unknown trailing options do not slip through.
     ['CREATE TABLE t (id int) INHERITS (other);', /unsupported trailing options/],
@@ -384,6 +385,61 @@ test('a unique constraint PostgreSQL would refuse on a partitioned table is refu
     // PARTITION BY must not have opened the trailing-options gate for anything else.
     ['CREATE SCHEMA s; CREATE TABLE s.e (id bigint NOT NULL) INHERITS (other);',
       /unsupported trailing options/],
+  ];
+  for (const [ddl, expected] of cases) {
+    assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
+      assert.match(error.message, expected);
+      return true;
+    }, ddl);
+  }
+});
+
+test('views and materialized views resolve their columns from the declared tables', () => {
+  const catalog = parseSchemaCatalog(`
+    CREATE SCHEMA s;
+    CREATE TABLE s.a (id bigint PRIMARY KEY, code text NOT NULL, note text);
+    CREATE TABLE s.b (id bigint PRIMARY KEY, aid bigint NOT NULL, amt numeric);
+    CREATE VIEW s.plain AS SELECT id, code FROM s.a;
+    CREATE VIEW s.renamed (x, y) AS SELECT id, upper(code) AS up FROM s.a;
+    CREATE VIEW s.joined AS SELECT a.id, a.code, b.amt FROM s.a a JOIN s.b b ON b.aid = a.id;
+    CREATE MATERIALIZED VIEW s.matview AS SELECT * FROM s.a;
+  `);
+  const byName = Object.fromEntries(catalog.tables.map((t) => [t.name, t]));
+
+  assert.equal(byName.plain!.kind, 'view');
+  assert.equal(byName.matview!.kind, 'materialized-view');
+  assert.equal(byName.a!.kind, undefined); // ordinary tables stay unmarked
+
+  // A single-source view projecting a column directly inherits its nullability.
+  assert.deepEqual(byName.plain!.columns, [
+    { name: 'id', dataType: 'bigint', nullable: false },
+    { name: 'code', dataType: 'text', nullable: false },
+  ]);
+
+  // A computed column has no inferable type, and the declared name list renames both.
+  assert.deepEqual(byName.renamed!.columns.map((c) => [c.name, c.dataType]), [['x', 'bigint'], ['y', 'unknown']]);
+
+  // Across a join, nullability is NOT inherited: an outer join, aggregate or CASE can
+  // introduce NULLs the source column's declaration does not show. Over-claiming
+  // NOT NULL here would corrupt the null-rejection analysis.
+  assert.ok(byName.joined!.columns.every((c) => c.nullable));
+  assert.deepEqual(byName.joined!.columns.map((c) => c.name), ['id', 'code', 'amt']);
+
+  assert.deepEqual(byName.matview!.columns.map((c) => c.name), ['id', 'code', 'note']);
+});
+
+test('a view whose columns cannot be resolved faithfully is rejected, not guessed at', () => {
+  const base = 'CREATE SCHEMA s; CREATE TABLE s.a (id bigint PRIMARY KEY, code text); CREATE TABLE s.b (id bigint PRIMARY KEY, aid bigint); ';
+  const cases: [string, RegExp][] = [
+    [`${base}CREATE VIEW s.v AS SELECT id FROM s.nope;`, /unknown relation s\.nope/],
+    [`${base}CREATE VIEW s.v AS SELECT nope FROM s.a;`, /unknown column nope/],
+    [`${base}CREATE VIEW s.v AS SELECT id FROM s.a a JOIN s.b b ON b.aid = a.id;`, /ambiguous column id/],
+    [`${base}CREATE VIEW s.v AS SELECT upper(code) FROM s.a;`, /without an AS alias/],
+    [`${base}CREATE VIEW s.v AS SELECT id FROM (SELECT id FROM s.a) x;`, /selects from a subquery/],
+    [`${base}CREATE VIEW s.v AS SELECT id FROM s.a UNION SELECT id FROM s.b;`, /set operation/],
+    [`${base}CREATE VIEW s.v AS WITH q AS (SELECT 1) SELECT * FROM q;`, /uses a CTE/],
+    [`${base}CREATE VIEW s.v (x) AS SELECT id, code FROM s.a;`, /declares 1 column names but its query produces 2/],
+    [`${base}CREATE VIEW s.v AS SELECT 1 AS one;`, /must select FROM a relation/],
   ];
   for (const [ddl, expected] of cases) {
     assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
