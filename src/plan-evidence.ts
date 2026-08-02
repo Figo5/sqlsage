@@ -113,8 +113,18 @@ export interface PlanEvidenceSummary {
   executionMs?: number;
 }
 
+/**
+ * Where the plan came from, which is a different question from whether it was
+ * analyzed. Deliberately not persisted into an evidence bundle: a plan captured
+ * live and written to a file is genuinely a saved plan when it is read back, so
+ * absence correctly defaults to 'saved'.
+ */
+export type PlanEvidenceSource = 'live' | 'saved';
+
 export interface PlanEvidence {
   mode: PlanEvidenceMode;
+  /** Defaults to 'saved' when not stated, so existing bundles keep reading true. */
+  source?: PlanEvidenceSource;
   /** The unwrapped PostgreSQL document containing `Plan`. */
   document: JsonObject;
   root: NormalizedPlanNode;
@@ -138,7 +148,7 @@ interface UnwrappedPlan {
  * Accept a PostgreSQL JSON array, a `{ Plan: ... }` document, or a SQLSage
  * evidence bundle containing `planJson`.
  */
-export function normalizePlanEvidence(input: unknown): PlanEvidence {
+export function normalizePlanEvidence(input: unknown, source: PlanEvidenceSource = 'saved'): PlanEvidence {
   const unwrapped = unwrapInput(input);
   const rawRoot = requireObject(unwrapped.document.Plan, 'Plan must be an object.');
   const root = normalizeNode(rawRoot, 0, 'Plan');
@@ -156,6 +166,7 @@ export function normalizePlanEvidence(input: unknown): PlanEvidence {
   const planningMs = topPlanningMs ?? unwrapped.bundlePlanningMs;
 
   return {
+    source,
     mode,
     document: unwrapped.document,
     root,
@@ -345,6 +356,10 @@ function summarize(
 function executionFromEvidence(predicted: ExecutionAnalysis, evidence: PlanEvidence): ExecutionAnalysis {
   const { summary } = evidence;
   const modeLabel = evidence.mode === 'analyzed' ? 'EXPLAIN ANALYZE' : 'plan-only EXPLAIN';
+  // Saying "saved" about a plan collected seconds ago by --analyze is simply untrue,
+  // and provenance is exactly what a reader weighs when deciding how far to trust a
+  // measurement. One label carries both axes so the two can never disagree.
+  const evidenceLabel = `${evidence.source === 'live' ? 'live' : 'saved'} ${modeLabel}`;
   const accessPaths = summary.accessPaths.map((access) => ({
     relation: access.alias && access.alias !== access.relation
       ? `${access.relation} (${access.alias})`
@@ -354,13 +369,13 @@ function executionFromEvidence(predicted: ExecutionAnalysis, evidence: PlanEvide
     // Keep the shared contract honest: this field is the planner estimate.
     // Observed rows remain explicit in the reason and normalized evidence.
     estimatedRows: access.estimatedRows,
-    reason: `Observed in the saved ${modeLabel}: PostgreSQL used ${humanNode(access.nodeType)}${access.usingIndex ? ` with ${access.usingIndex}` : ''}${rowObservation(access, evidence.mode)}.`,
+    reason: `Observed in the ${evidenceLabel}: PostgreSQL used ${humanNode(access.nodeType)}${access.usingIndex ? ` with ${access.usingIndex}` : ''}${rowObservation(access, evidence.mode)}.`,
   }));
   const joinStrategies = summary.joins.map((join, index) => ({
     join: `${join.joinType ? `${join.joinType.toLowerCase()} ` : ''}join ${index + 1}`,
     algorithm: join.algorithm,
     estimatedRows: join.estimatedRows,
-    reason: `Observed in the saved ${modeLabel}: PostgreSQL used ${humanNode(join.nodeType)}${rowObservation(join, evidence.mode)}.`,
+    reason: `Observed in the ${evidenceLabel}: PostgreSQL used ${humanNode(join.nodeType)}${rowObservation(join, evidence.mode)}.`,
   }));
   const ranked = [...evidence.nodes]
     .filter((node) => node.actualTotalMs !== undefined || node.totalCost !== undefined)
@@ -371,14 +386,14 @@ function executionFromEvidence(predicted: ExecutionAnalysis, evidence: PlanEvide
   const dominantCosts = ranked.map((node) => ({
     what: `Observed ${node.nodeType}${node.relation ? ` on ${node.relation}` : ''}`,
     why: evidence.mode === 'analyzed'
-      ? `The saved analyzed plan reports ${formatMs(node.actualTotalMs)} inclusive time for this node${node.actualLoops !== undefined ? ` across ${formatNumber(node.actualLoops)} loop(s)` : ''}; parent and child times overlap.`
+      ? `The ${evidenceLabel} reports ${formatMs(node.actualTotalMs)} inclusive time for this node${node.actualLoops !== undefined ? ` across ${formatNumber(node.actualLoops)} loop(s)` : ''}; parent and child times overlap.`
       : `This node has total planner cost ${formatNumber(node.totalCost)}. Cost units rank work inside this plan; they are not milliseconds or a measured runtime.`,
   }));
   const observedMemoryRisks = summary.spills.map((spill) => ({
     operation: `${spill.nodeType}${spill.relation ? ` on ${spill.relation}` : ''}`,
-    why: `The saved ${modeLabel} records ${spill.reason}`,
+    why: `The ${evidenceLabel} records ${spill.reason}`,
   }));
-  const observedEstimationRisks = rankedEstimationRisks(summary.rowEstimateRatios, modeLabel);
+  const observedEstimationRisks = rankedEstimationRisks(summary.rowEstimateRatios, evidenceLabel);
 
   return {
     accessPaths,
@@ -387,7 +402,7 @@ function executionFromEvidence(predicted: ExecutionAnalysis, evidence: PlanEvide
     memoryRisks: evidence.mode === 'analyzed' ? observedMemoryRisks : [...observedMemoryRisks, ...predicted.memoryRisks],
     estimationRisks: evidence.mode === 'analyzed' ? observedEstimationRisks : predicted.estimationRisks,
     scalability: {
-      summary: `The saved ${modeLabel} establishes the observed plan shape (${summary.nodeTypes.join(', ')}), but one capture does not establish growth at other data volumes. ${predicted.scalability.summary}`,
+      summary: `The ${evidenceLabel} establishes the observed plan shape (${summary.nodeTypes.join(', ')}), but one capture does not establish growth at other data volumes. ${predicted.scalability.summary}`,
       complexity: predicted.scalability.complexity,
     },
   };
