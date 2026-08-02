@@ -110,6 +110,22 @@ function splitStatements(sql: string): string[] {
       continue;
     }
 
+    // psql meta-commands are client directives, not SQL, and are terminated by the
+    // line rather than by a semicolon -- so leaving one in place merges it with the
+    // statement that follows. Recent pg_dump emits \restrict/\unrestrict around every
+    // dump, which made real dumps unparseable.
+    if (char === '\\' && /(^|\n)[ \t]*$/.test(current)) {
+      let line = '';
+      while (i < sql.length && sql[i] !== '\n') { line += sql[i]; i += 1; }
+      const command = line.slice(1).split(/[\s]/, 1)[0]?.toLowerCase() ?? '';
+      // \i and \ir pull in another file. Skipping one would silently return a catalog
+      // missing whatever it defined, so it fails rather than quietly under-reporting.
+      if (command === 'i' || command === 'ir' || command === 'include' || command === 'include_relative') {
+        fail(`schema includes another file with \\${command}, which the offline importer does not follow; concatenate the files first`);
+      }
+      current += ' ';
+      continue;
+    }
     if (char === '-' && next === '-') {
       while (i < sql.length && sql[i] !== '\n') i += 1;
       current += ' ';

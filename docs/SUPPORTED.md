@@ -127,6 +127,11 @@ change the column set, keys, indexes or nullability, so skipping it costs nothin
 `GENERATED ALWAYS AS IDENTITY` implies `NOT NULL`; `GENERATED ALWAYS AS (expr) STORED` is
 an ordinary nullable column whose value happens to be computed.
 
+The `\restrict` and `\unrestrict` psql meta-commands recent `pg_dump` versions wrap
+every dump in are skipped too. `\i` and `\ir` are not: they pull in another file, and
+following them is the only way to avoid returning a catalog that is silently missing
+whatever that file defined.
+
 **Skipping is an allowlist, not a catch-all.** Anything not named above still fails
 loudly. A parser that quietly ignored what it did not understand would hand back a catalog
 silently missing keys or indexes, and every downstream claim about uniqueness, nullability

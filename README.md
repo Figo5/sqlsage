@@ -55,6 +55,18 @@ sqlsage list
 sqlsage analyze --corpus q05 --format text
 ```
 
+## Tutorials
+
+Three complete walkthroughs, each with commands and output verified against a live
+PostgreSQL 16 database:
+
+1. [Catching a query that returns the wrong answer](docs/tutorials/01-wrong-results-not-in.md)
+   — a nullable `NOT IN` that silently returns zero rows instead of 196,000. No database needed.
+2. [Fixing a date filter an index cannot help](docs/tutorials/02-non-sargable-date.md)
+   — why adding the index alone changes nothing, and the rewrite plus index is 5.5x faster.
+3. [Analyzing a real plan from your own database](docs/tutorials/03-real-explain-plan.md)
+   — `pg_dump`, `EXPLAIN (ANALYZE, FORMAT JSON)`, and reading where the planner was wrong.
+
 ## Check your environment
 
 `sqlsage doctor` validates the runtime, any input files you pass, and — if you supply a
