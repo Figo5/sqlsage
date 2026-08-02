@@ -19,14 +19,38 @@ FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
 LEFT JOIN pg_stats s ON s.schemaname = n.nspname AND s.tablename = c.relname AND s.attname = a.attname
-WHERE n.nspname = $1 AND c.relkind = 'r'
+WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'v', 'm')
 ORDER BY c.relname, a.attnum;`;
 
+/*
+ * relkind: r ordinary table, p partitioned table, v view, m materialized view.
+ * Ordinary and partitioned tables report no `kind`, so an existing catalog stays
+ * byte-identical and `kind === undefined` keeps meaning "an ordinary table".
+ *
+ * reltuples is -1 for a relation that has never been analyzed, and a partitioned
+ * parent stores no rows of its own, so both would report a large table as empty.
+ * Each is resolved to SQL NULL -- unknown -- rather than to a misleading zero.
+ */
 const TABLE_SQL = `
-SELECT c.relname AS table_name, c.reltuples::bigint AS row_count,
-       pg_total_relation_size(c.oid) AS size_bytes
+SELECT c.relname AS table_name,
+       CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized-view' END AS kind,
+       CASE
+         WHEN c.relkind = 'v' THEN NULL
+         WHEN c.relkind = 'p' THEN (
+           SELECT CASE WHEN bool_and(p.reltuples >= 0) THEN sum(p.reltuples)::bigint END
+             FROM pg_partition_tree(c.oid) t
+             JOIN pg_class p ON p.oid = t.relid
+            WHERE p.relkind = 'r')
+         ELSE NULLIF(c.reltuples::bigint, -1)
+       END AS row_count,
+       CASE
+         WHEN c.relkind = 'v' THEN NULL
+         WHEN c.relkind = 'p' THEN (
+           SELECT sum(pg_total_relation_size(t.relid))::bigint FROM pg_partition_tree(c.oid) t)
+         ELSE pg_total_relation_size(c.oid)
+       END AS size_bytes
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = $1 AND c.relkind = 'r';`;
+WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'v', 'm');`;
 
 const INDEX_SQL = `
 SELECT t.relname AS table_name, i.relname AS index_name,
@@ -81,9 +105,12 @@ export async function introspect(client: pg.Client, schema = 'shop'): Promise<Ca
 
   const tables = new Map<string, Table>();
   for (const r of tbls.rows) {
+    // Number(null) is 0, so an unknown count must be checked before converting.
     tables.set(r.table_name, {
       schema, name: r.table_name, columns: [], indexes: [],
-      rowCount: Number(r.row_count), sizeBytes: Number(r.size_bytes),
+      ...(r.kind ? { kind: r.kind as Table['kind'] } : {}),
+      rowCount: r.row_count === null ? undefined : Number(r.row_count),
+      sizeBytes: r.size_bytes === null ? undefined : Number(r.size_bytes),
     });
   }
 
@@ -219,6 +246,9 @@ export function validateCatalog(value: unknown): Catalog {
     tableNames.add(identity);
     if (!Array.isArray(table.columns)) fail(`${path}.columns`, 'must be an array.');
     if (!Array.isArray(table.indexes)) fail(`${path}.indexes`, 'must be an array.');
+    if (table.kind !== undefined && !['table', 'view', 'materialized-view'].includes(table.kind as string)) {
+      fail(`${path}.kind`, 'must be table, view, or materialized-view.');
+    }
     if (!optionalNonnegative(table.rowCount)) fail(`${path}.rowCount`, 'must be a non-negative finite number.');
     if (!optionalNonnegative(table.sizeBytes)) fail(`${path}.sizeBytes`, 'must be a non-negative finite number.');
     if (table.primaryKey !== undefined && !stringList(table.primaryKey)) {
