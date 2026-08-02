@@ -338,6 +338,32 @@ function setPrimaryKey(table: MutableTable, columns: string[], constraintName?: 
   });
 }
 
+/**
+ * A UNIQUE constraint is a unique index in everything the analysis cares about, so
+ * it is recorded as one and the join fan-out proof reads it without changes.
+ *
+ * Unlike PRIMARY KEY this must NOT force the columns to NOT NULL. PostgreSQL treats
+ * NULLs as distinct by default, so a unique column can hold many of them. Copying
+ * the primary-key behaviour here would silently claim a column is non-nullable and
+ * corrupt the null-rejection analysis.
+ */
+function addUniqueConstraint(table: MutableTable, columns: string[], constraintName?: string): void {
+  for (const name of columns) {
+    const column = table.columns.find((candidate) => candidate.name.toLowerCase() === name.toLowerCase());
+    if (!column) fail(`unique constraint on ${table.name} references unknown column ${name}`);
+  }
+  table.indexes.push({
+    // PostgreSQL's own convention, so a recommendation never proposes creating an
+    // index that already exists under the name the server would have chosen.
+    name: constraintName ?? `${table.name}_${columns.join('_')}_key`,
+    table: table.name,
+    columns: [...columns],
+    unique: true,
+    method: 'btree',
+    expressions: [],
+  });
+}
+
 function parseReference(tokens: Token[], at: number, end: number): { table: string; columns: string[]; next: number } {
   const target = parseQualifiedName(tokens, at);
   if (!target) fail('REFERENCES must name a table');
@@ -424,6 +450,10 @@ function parseColumn(statement: string, tokens: Token[], start: number, end: num
       setPrimaryKey(table, [name], pendingConstraintName);
       pendingConstraintName = undefined;
       i += 2;
+    } else if (keyword(tokens[i], 'unique')) {
+      addUniqueConstraint(table, [name], pendingConstraintName);
+      pendingConstraintName = undefined;
+      i += 1;
     } else if (keyword(tokens[i], 'references')) {
       const reference = parseReference(tokens, i + 1, end);
       table.foreignKeys ??= [];
@@ -451,6 +481,15 @@ function parseTableConstraint(tokens: Token[], start: number, end: number, table
     const close = matchingParen(tokens, i + 2, end);
     if (close + 1 !== end) fail(`PRIMARY KEY on ${table.name} has unsupported trailing options`);
     setPrimaryKey(table, parseIdentifierList(tokens, i + 2, close, 'PRIMARY KEY'), constraintName);
+    return;
+  }
+  if (keyword(tokens[i], 'unique')) {
+    if (tokens[i + 1]?.value !== '(') fail(`UNIQUE on ${table.name} must contain a column list`);
+    const close = matchingParen(tokens, i + 1, end);
+    // NULLS [NOT] DISTINCT and index parameters are deliberately not accepted:
+    // rejecting is better than parsing them into something we did not model.
+    if (close + 1 !== end) fail(`UNIQUE on ${table.name} has unsupported trailing options`);
+    addUniqueConstraint(table, parseIdentifierList(tokens, i + 1, close, 'UNIQUE'), constraintName);
     return;
   }
   if (keyword(tokens[i], 'foreign') && keyword(tokens[i + 1], 'key')) {

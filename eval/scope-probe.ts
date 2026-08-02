@@ -9,7 +9,8 @@ const BASE = `CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint PRIMARY KEY, k
 const DDL: [string, string][] = [
   ['ALTER TABLE', `${BASE}ALTER TABLE shop.t ADD COLUMN extra text;`],
   ['UNIQUE constraint (column)', `${BASE.replace('v text','v text UNIQUE')}`],
-  ['UNIQUE constraint (table)', `${BASE}ALTER TABLE shop.t ADD CONSTRAINT u UNIQUE (k);`],
+  ['UNIQUE constraint (table, in CREATE TABLE)', 'CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint PRIMARY KEY, k bigint NOT NULL, v text, UNIQUE (k, v));'],
+  ['UNIQUE via ALTER TABLE', `${BASE}ALTER TABLE shop.t ADD CONSTRAINT u UNIQUE (k);`],
   ['UNIQUE index', `${BASE}CREATE UNIQUE INDEX i ON shop.t (k);`],
   ['generated column', `CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint PRIMARY KEY, a int, b int GENERATED ALWAYS AS (a*2) STORED);`],
   ['identity column', `CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY);`],
