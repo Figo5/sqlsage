@@ -161,6 +161,20 @@ opting in.
 
 SQLSage never executes recommended rewrites or candidate index DDL.
 
+## Compare two plans
+
+```bash
+sqlsage compare --before before.json --after after.json
+```
+
+Reports what changed between two captured plans — access paths, indexes, join
+strategies, spills, row-estimate accuracy — and whether it measurably improved.
+
+It refuses verdicts the evidence cannot support: no timing comparison when either side
+is plan-only, no "improvement" claimed below 1.2x since two single runs cannot separate
+that from noise, and a prominent flag when the two captures describe different
+statements. `compare` never executes a query.
+
 ## Exit codes
 
 - `0`: analysis completed and output was written;

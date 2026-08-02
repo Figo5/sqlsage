@@ -316,3 +316,31 @@ test('no corrective command is invented when none is knowable', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('compare renders a verdict from two captured plans without touching a database', () => {
+  const both = run(['compare', '--before', Q01_PLAN, '--after', Q10_PLAN, '--format', 'markdown']);
+  assert.equal(both.status, 0, both.stderr);
+  assert.match(both.stdout, /# SQLSage plan comparison/);
+  // These bundles carry their SQL, so the mismatch must be surfaced rather than
+  // presented as a before and after of one query.
+  assert.match(both.stdout, /different statements/);
+  assert.doesNotMatch(both.stdout, /\bundefined\b|\bNaN\b/);
+
+  const json = run(['compare', '--before', Q01_PLAN, '--after', Q01_PLAN, '--format', 'json']);
+  assert.equal(json.status, 0);
+  const parsed = JSON.parse(json.stdout);
+  assert.equal(parsed.command, 'compare');
+  assert.equal(parsed.comparison.sameQuery, 'same');
+  assert.equal(parsed.comparison.verdict.kind, 'no-measurable-change');
+});
+
+test('compare reports a missing plan file with a corrective command', () => {
+  const missing = run(['compare', '--before', Q01_PLAN, '--after', '/definitely/not/a/plan.json']);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /Could not read plan file/);
+  assert.doesNotMatch(missing.stderr, /at .*\.ts:\d+/);
+});
+
+test('help documents compare', () => {
+  assert.match(run(['--help']).stdout, /sqlsage compare --before/);
+});

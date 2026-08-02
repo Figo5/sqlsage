@@ -161,6 +161,15 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
   value, so selectivity and index advice fall back to defaults. The gap is advice quality,
   not parsing.
 - Add `sqlsage compare` for comparing saved plans or before-and-after query versions.
+  **Done for captured plans.** `sqlsage compare --before a.json --after b.json` reports
+  access-path changes per relation, indexes gained and lost, join-strategy changes, disk
+  spills resolved or introduced, the worst row misestimate on each side, and a timing
+  verdict. It refuses what two captures cannot establish: no runtime verdict when either
+  side is plan-only, "no measurable change" below 1.2x since two single runs cannot
+  separate that from noise, and a prominent flag when the two captures describe different
+  statements. Every timing claim carries the caveat that one run is not a benchmark.
+  It never executes a query — `--analyze` and `--database-url` are refused — so running
+  a before-and-after live remains the user's own step.
 - Show estimated-versus-actual row errors prominently. **Done.** Analyzed plans already
   computed these; they now lead. Risks are ranked by **total rows misjudged**
   (`|actual - estimated| x loops`), not by ratio, and a misestimate that is both large in

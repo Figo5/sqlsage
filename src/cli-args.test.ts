@@ -110,3 +110,17 @@ test('doctor accepts metadata flags, requires none, and refuses to execute anyth
   assert.throws(() => parseCliArgs(['doctor', '--sql', 'SELECT 1']), /doctor does not take --sql/);
   assert.throws(() => parseCliArgs(['doctor', 'file.sql']), /doctor takes no positional arguments/);
 });
+
+test('compare takes two captured plans and refuses to run anything', () => {
+  assert.deepEqual(parseCliArgs(['compare', '--before', 'a.json', '--after', 'b.json']), {
+    command: 'compare', beforePath: 'a.json', afterPath: 'b.json', format: undefined, color: undefined,
+  });
+  assert.equal(parseCliArgs(['compare', '--before', 'a', '--after', 'b', '--format', 'json']).format, 'json');
+
+  assert.throws(() => parseCliArgs(['compare']), /needs both --before <plan> and --after <plan>/);
+  assert.throws(() => parseCliArgs(['compare', '--before', 'a']), /needs both --before/);
+  assert.throws(() => parseCliArgs(['compare', 'extra.json']), /takes no positional arguments/);
+  // compare diffs captures; it never executes a query, so these are refused outright.
+  assert.throws(() => parseCliArgs(['compare', '--before', 'a', '--after', 'b', '--analyze']), /never executes a query/);
+  assert.throws(() => parseCliArgs(['compare', '--before', 'a', '--after', 'b', '--database-url', 'x']), /does not take --database-url/);
+});
