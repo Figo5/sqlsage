@@ -11,12 +11,29 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Required for npm trusted publishing: npm exchanges this short-lived OIDC
+      # token for publish rights, so no long-lived npm token is stored anywhere.
+      id-token: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24.x
           cache: npm
+          registry-url: https://registry.npmjs.org
+      # A tag that disagrees with package.json would publish a version nobody
+      # asked for, and npm versions cannot be reissued. Fail before any build work.
+      - name: Verify tag matches package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $GITHUB_REF_NAME implies version $tag but package.json says $pkg" >&2
+            exit 1
+          fi
+          echo "publishing version $pkg"
       - run: npm ci
       - run: npm test
       - run: node eval/dump-ir.ts --check
@@ -29,6 +46,23 @@ jobs:
           npm pack --pack-destination release
           cd release
           sha256sum *.tgz > SHA256SUMS.txt
+      # npm before GitHub: publishing to npm is the step that cannot be undone, so
+      # it goes last among the irreversible ones and only after every check above
+      # has passed. A GitHub release without an npm publish is easy to redo; the
+      # reverse is not.
+      - name: Publish to npm
+        run: |
+          # Trusted publishing (OIDC) requires npm 11.5.1 or newer. Node 24 ships a
+          # recent npm, but pin the floor rather than trusting the runner image.
+          npm install --global npm@latest
+          version="$(node -p "require('./package.json').version")"
+          if npm view "sqlsage@$version" version >/dev/null 2>&1; then
+            echo "sqlsage@$version is already on npm; skipping publish"
+            exit 0
+          fi
+          # No NODE_AUTH_TOKEN: credentials come from the id-token permission above.
+          # Provenance is attached automatically when publishing via OIDC.
+          npm publish
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

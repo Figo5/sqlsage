@@ -34,10 +34,10 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts src/index.ts --bundle --platform=node --packages=external --format=esm --target=node24 --outdir=dist",
+    "build": "esbuild src/cli.ts src/index.ts --bundle --platform=node --packages=external --format=esm --target=node22 --outdir=dist",
     "prepack": "npm run build",
     "sqlsage": "node src/cli.ts",
     "explain": "node src/cli.ts",
@@ -53,5 +53,8 @@
   },
   "devDependencies": {
     "esbuild": "0.28.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

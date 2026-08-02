@@ -176,3 +176,80 @@ test('a raw plan still requires schema metadata', () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('demo runs with no arguments, no files, and no database', () => {
+  const demo = run(['demo']);
+  assert.equal(demo.status, 0, demo.stderr);
+  assert.equal(demo.stderr, '');
+
+  // It must show SQLSage catching a real defect, not a performance nicety --
+  // a demo that led with a tuning tip would misrepresent the product.
+  assert.match(demo.stdout, /WRONG RESULTS/);
+  assert.match(demo.stdout, /NOT IN/);
+  // It names what it analyzed, and shows the SQL it used.
+  assert.match(demo.stdout, /analyzing the bundled example q05/);
+  assert.match(demo.stdout, /FROM shop\.customers c/);
+  // And it ends with copy-pasteable next steps for the user's own query.
+  assert.match(demo.stdout, /sqlsage analyze --sql "SELECT \.\.\." --catalog catalog\.json/);
+  assert.doesNotMatch(demo.stdout, /\bundefined\b|\bNaN\b|\[object Object\]/);
+});
+
+test('demo honours --format json and stays machine-readable', () => {
+  const demo = run(['demo', '--format', 'json']);
+  assert.equal(demo.status, 0, demo.stderr);
+  const parsed = JSON.parse(demo.stdout);
+  assert.equal(parsed.product, 'sqlsage');
+  assert.equal(parsed.formatVersion, 1);
+  assert.equal(parsed.mode, 'offline-catalog');
+  // JSON output carries no banner text; the prose belongs to the human formats.
+  assert.doesNotMatch(demo.stdout, /Now try your own/);
+});
+
+test('doctor passes on a healthy install and points at the next command', () => {
+  const doctor = run(['doctor']);
+  assert.equal(doctor.status, 0, doctor.stderr);
+  assert.match(doctor.stdout, /PASS\s+Node\.js runtime/);
+  assert.match(doctor.stdout, /PASS\s+Bundled example catalog/);
+  assert.match(doctor.stdout, /PASS\s+End-to-end self-test/);
+  assert.match(doctor.stdout, /Next: sqlsage demo/);
+  // Unsupplied inputs are skipped, never silently reported as healthy.
+  assert.match(doctor.stdout, /SKIP\s+Database/);
+});
+
+test('doctor validates supplied files and exits 1 with an exact corrective command', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sqlsage-doctor-'));
+  try {
+    const badCatalog = join(dir, 'bad.json');
+    writeFileSync(badCatalog, '{"tables": "not-an-array"}');
+
+    const good = run(['doctor', '--catalog', CATALOG, '--schema', SCHEMA, '--plan', Q01_PLAN]);
+    assert.equal(good.status, 0, good.stdout);
+    assert.match(good.stdout, /PASS\s+Catalog file/);
+    assert.match(good.stdout, /PASS\s+Schema SQL file/);
+    assert.match(good.stdout, /PASS\s+Plan file/);
+
+    const bad = run(['doctor', '--catalog', badCatalog]);
+    assert.equal(bad.status, 1);
+    assert.match(bad.stdout, /FAIL\s+Catalog file/);
+    // A failure without an exact command is the failure mode this command exists to avoid.
+    assert.match(bad.stdout, /fix: sqlsage doctor --catalog/);
+    assert.match(bad.stdout, /then re-run: sqlsage doctor/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor reports an unreachable database as a failure, not a crash', () => {
+  const doctor = run(['doctor', '--database-url', 'postgresql://nobody@127.0.0.1:1/none']);
+  assert.equal(doctor.status, 1);
+  assert.match(doctor.stdout, /FAIL\s+Database connection/);
+  assert.match(doctor.stdout, /fix: psql "postgresql:\/\/nobody@127\.0\.0\.1:1\/none" -c "SELECT 1"/);
+  assert.doesNotMatch(doctor.stdout, /at .*\.ts:\d+/); // no stack trace leaked
+});
+
+test('help documents demo and doctor as first steps', () => {
+  const help = run(['--help']);
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /sqlsage demo/);
+  assert.match(help.stdout, /sqlsage doctor/);
+});

@@ -7,12 +7,13 @@ import packageJson from '../package.json' with { type: 'json' };
 import { CORPUS } from '../corpus/queries.ts';
 import { CatalogInputError, loadCatalog, validateCatalog } from './catalog.ts';
 import { CliUsageError, parseCliArgs } from './cli-args.ts';
-import type { AnalyzeCliOptions, OutputFormat, QuerySource } from './cli-args.ts';
+import type { AnalyzeCliOptions, DemoCliOptions, DoctorCliOptions, OutputFormat, QuerySource } from './cli-args.ts';
 import { analyze } from './index.ts';
 import { bindQuery } from './ir/index.ts';
 import { collectLiveEvidence, LiveInputError } from './live.ts';
 import { applyPlanEvidence, loadPlanEvidence, normalizePlanEvidence, PlanInputError } from './plan-evidence.ts';
 import type { PlanEvidence } from './plan-evidence.ts';
+import { runDoctorChecks, renderDoctorReport } from './doctor.ts';
 import { buildModel, renderReport } from './report/index.ts';
 import { loadSchemaCatalog, SchemaInputError } from './schema.ts';
 import type { Catalog } from './types.ts';
@@ -44,12 +45,24 @@ Output and safety:
 Safety: --analyze executes the SELECT. A read-only transaction cannot prevent external
 side effects inside an unfamiliar user-defined volatile function; review the query first.
 
+First steps:
+  sqlsage demo                          analyze a bundled example; needs no files
+  sqlsage doctor                        check the runtime and bundled assets
+  sqlsage doctor --database-url <url>   also check connectivity and permissions
+
 Bundled examples:
   sqlsage list
   sqlsage analyze --corpus q05 --format text
 
 Exit codes: 0 analysis written; 1 usage/input/connection failure; 2 analysis blocked.
 `;
+
+/**
+ * The demo query is chosen to show SQLSage doing the thing it is for: q05
+ * returns the wrong answer, not merely a slow one. A demo that led with a
+ * performance tip would misrepresent the product's strongest claim.
+ */
+const DEMO_CORPUS_ID = 'q05';
 
 interface CliIo {
   stdout: { write(chunk: string): unknown; isTTY?: boolean };
@@ -219,6 +232,50 @@ async function runAnalysis(options: AnalyzeCliOptions, io: CliIo): Promise<numbe
   return blocked ? 2 : 0;
 }
 
+async function runDemo(options: DemoCliOptions, io: CliIo): Promise<number> {
+  const query = CORPUS.find((entry) => entry.id.startsWith(DEMO_CORPUS_ID));
+  if (!query) throw new CliUsageError(`the bundled example ${DEMO_CORPUS_ID} is missing; reinstall sqlsage`);
+
+  const catalog = await loadCatalog(bundledCatalogPath());
+  const result = analyze(query.sql, catalog);
+  const format = options.format ?? (io.stdout.isTTY ? 'text' : 'markdown');
+
+  if (format === 'json') {
+    io.stdout.write(jsonOutput(result, { mode: 'offline-catalog', evidence: 'predicted-and-unverified', catalog }));
+    return 0;
+  }
+
+  // The banner goes to stdout ahead of the report: a note written afterwards, or
+  // to stderr, is lost the moment someone pipes the output to a file.
+  io.stdout.write(
+    `SQLSage demo — analyzing the bundled example ${query.id}: ${query.title}\n` +
+      'No database, no catalog, and no files of your own are involved.\n\n' +
+      `${query.sql.trim()}\n\n` +
+      '─'.repeat(72) + '\n\n',
+  );
+  io.stdout.write(renderReport(result.analysis, {
+    format: format === 'text' ? 'terminal' : 'markdown',
+    color: options.color,
+  }) + '\n');
+  io.stdout.write(
+    '\n' + '─'.repeat(72) + '\n' +
+      'That report came from the query and schema alone — no query was executed.\n\n' +
+      'Now try your own:\n' +
+      '  sqlsage analyze --sql "SELECT ..." --catalog catalog.json\n' +
+      '  sqlsage analyze --query slow.sql --schema schema.sql\n' +
+      '  sqlsage analyze --query slow.sql --plan plan.json\n\n' +
+      'No catalog yet?  sqlsage doctor --database-url "$DATABASE_URL"\n' +
+      'More examples:    sqlsage list\n',
+  );
+  return 0;
+}
+
+async function runDoctor(options: DoctorCliOptions, io: CliIo): Promise<number> {
+  const results = await runDoctorChecks(options);
+  io.stdout.write(renderDoctorReport(results));
+  return results.some((result) => result.status === 'fail') ? 1 : 0;
+}
+
 export async function runCli(argv: string[], io: CliIo = processIo): Promise<number> {
   try {
     const options = parseCliArgs(argv, io.stdin.isTTY === true);
@@ -230,6 +287,8 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
       io.stdout.write(`${packageJson.version}\n`);
       return 0;
     }
+    if (options.command === 'demo') return await runDemo(options, io);
+    if (options.command === 'doctor') return await runDoctor(options, io);
     if (options.command === 'list') {
       for (const query of CORPUS) io.stdout.write(`${query.id.padEnd(32)} ${query.title}\n`);
       return 0;
