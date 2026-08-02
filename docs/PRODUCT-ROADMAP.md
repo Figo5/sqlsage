@@ -140,7 +140,7 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
     declared tables; no index is recommended for a plain view (no storage), while a
     materialized view is treated as indexable. Nullability is inherited only for a
     single-source direct projection. Unresolvable definitions are rejected. Live
-    introspection still selects `relkind = 'r'`, so views are offline-only for now; and
+    introspection reports them too, so the offline and connected paths agree; and
   - **multi-schema references — already supported**, including cross-schema foreign keys.
     Measured, correcting an earlier assumption in this document.
 - Accept real `pg_dump --schema-only` output. **Done.** Dump preamble, ownership, grants,

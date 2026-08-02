@@ -134,6 +134,11 @@ and join fan-out would inherit that gap.
 
 ### Partitioned tables
 
+Live introspection reports a partitioned parent's row count and size by summing its
+partition tree, because the parent stores no rows of its own and would otherwise look
+empty. When any partition has never been analyzed the count is reported as unknown rather
+than as a misleading partial sum.
+
 `PARTITION BY RANGE | LIST | HASH`, `CREATE TABLE ... PARTITION OF ...`, and the
 `ALTER TABLE ... ATTACH PARTITION` form `pg_dump` emits all parse.
 
@@ -171,9 +176,8 @@ Rejected rather than guessed at, because a view whose columns cannot be resolved
 faithfully is worse than no view at all: an unknown or ambiguous column, a subquery in
 `FROM`, a set operation, and a CTE.
 
-**Known asymmetry:** live introspection (`--database-url`) selects ordinary tables only
-(`relkind = 'r'`), so views are visible through `--schema` but not through a live
-connection. Analyzing a query over a view therefore needs the offline path today.
+Live introspection (`--database-url`) sees views, materialized views and partitioned
+tables too, so `--schema` and a live connection agree on which relations exist.
 
 ## Plan inputs (`--plan`)
 
