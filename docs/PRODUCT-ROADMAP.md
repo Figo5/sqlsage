@@ -93,7 +93,9 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
   - catching a wrong-result `NOT IN` query;
   - fixing a non-sargable date predicate; and
   - analyzing a real PostgreSQL JSON plan.
-- Document exactly which SQL and schema constructs are supported.
+- Document exactly which SQL and schema constructs are supported. **Done** — see
+  [Supported constructs](SUPPORTED.md). Every entry is measured by `eval/scope-probe.ts`
+  rather than inferred from source, and the probe is re-runnable after parser changes.
 - Add a short terminal recording or animated demonstration to the README.
 
 ### User acquisition
@@ -118,13 +120,21 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
 
 ### Product priorities
 
-- Support common missing schema constructs, especially:
-  - `ALTER TABLE`;
-  - unique constraints;
-  - generated columns;
-  - partitioned tables; and
-  - multi-schema references.
-- Support query parameters such as `$1`, `$2`, and typed placeholders.
+- Support common missing schema constructs. Measured status (`eval/scope-probe.ts`):
+  - `ALTER TABLE` — not supported;
+  - unique constraints — `CREATE UNIQUE INDEX` **is** supported; `UNIQUE` as a column or
+    table constraint is not. This matters because uniqueness drives the join fan-out
+    analysis behind over-counted-aggregate findings;
+  - generated and identity columns — not supported;
+  - `CHECK` constraints — not supported;
+  - partitioned tables (`PARTITION BY`) — not supported;
+  - views and materialized views — not supported; and
+  - **multi-schema references — already supported**, including cross-schema foreign keys.
+    Measured, correcting an earlier assumption in this document.
+- Support query parameters such as `$1`, `$2`, and typed placeholders. Measured: these
+  already **bind** without error, so a report is produced — but a placeholder carries no
+  value, so selectivity and index advice fall back to defaults. The gap is advice quality,
+  not parsing.
 - Add `sqlsage compare` for comparing saved plans or before-and-after query versions.
 - Show estimated-versus-actual row errors prominently.
 - Test supported PostgreSQL versions in CI.
