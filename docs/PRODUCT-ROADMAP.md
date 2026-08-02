@@ -121,11 +121,12 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
 ### Product priorities
 
 - Support common missing schema constructs. Measured status (`eval/scope-probe.ts`):
-  - `ALTER TABLE` — not supported;
+  - `ALTER TABLE` — **done.** ADD CONSTRAINT (primary key, unique, foreign key),
+    ADD COLUMN, and ALTER COLUMN SET/DROP NOT NULL, including comma-separated actions,
+    ONLY and IF EXISTS. Actions the analysis does not model are rejected, not ignored;
   - unique constraints — **done.** Column, table, composite, and named `UNIQUE` inside
     `CREATE TABLE` all become unique indexes and feed the join fan-out proof. `UNIQUE`
-    correctly does not imply `NOT NULL`. Only the `ALTER TABLE` spelling remains, blocked
-    on `ALTER TABLE` itself;
+    correctly does not imply `NOT NULL`. All spellings including `ALTER TABLE ... ADD CONSTRAINT`;
   - generated and identity columns — not supported;
   - `CHECK` constraints — not supported;
   - partitioned tables (`PARTITION BY`) — not supported;

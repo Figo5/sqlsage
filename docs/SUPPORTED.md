@@ -52,7 +52,7 @@ literal generally yields better advice. Improving this is on the roadmap.
 | Expression indexes (`lower(v)`) | supported |
 | Covering indexes (`INCLUDE (...)`) | supported |
 | Non-btree access methods (`USING gin`, etc.) | supported |
-| `ALTER TABLE` | **not supported** |
+| `ALTER TABLE` (ADD CONSTRAINT / ADD COLUMN / ALTER COLUMN SET-DROP NOT NULL) | supported |
 | `UNIQUE` as a column or table constraint | supported |
 | `CHECK` constraints | **not supported** |
 | Generated and identity columns (`GENERATED ...`) | **not supported** |
@@ -79,8 +79,7 @@ CREATE UNIQUE INDEX i ON s.t (k);          -- and the explicit index form
 column may hold many of them, and SQLSage leaves nullability exactly as declared.
 
 `UNIQUE ... NULLS NOT DISTINCT` (PostgreSQL 15+) is rejected rather than parsed into a
-plain unique index, because it asserts something different. `ALTER TABLE ... ADD
-CONSTRAINT ... UNIQUE` is still unsupported, since `ALTER TABLE` is.
+plain unique index, because it asserts something different. `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE` is also supported.
 
 ### Working around an unsupported construct
 
@@ -98,6 +97,19 @@ Generating a catalog from a live database avoids the question entirely:
 ```bash
 sqlsage analyze --query q.sql --database-url "$DATABASE_URL" --schema-name public
 ```
+
+### ALTER TABLE
+
+Supported actions: `ADD [CONSTRAINT name] PRIMARY KEY | UNIQUE | FOREIGN KEY`,
+`ADD [COLUMN] name type ...`, and `ALTER [COLUMN] name SET/DROP NOT NULL`. Several
+actions may be comma-separated in one statement, and `ONLY` and `IF EXISTS` are accepted.
+
+The table must already have been declared by a `CREATE TABLE` earlier in the file, so
+statement order matters exactly as it does for PostgreSQL.
+
+Actions that do not affect the analysis are **rejected rather than ignored**, because
+accepting them silently would imply SQLSage modelled them: `DROP COLUMN`,
+`DROP CONSTRAINT`, `SET DEFAULT`, type changes, and `ADD CHECK`.
 
 ## Plan inputs (`--plan`)
 
