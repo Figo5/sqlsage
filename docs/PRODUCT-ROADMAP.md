@@ -92,10 +92,12 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
   its own fix, and usage errors get a runnable example instead of a bare pointer to
   `--help`. Nothing is invented — a missing `--query` file next to a healthy `--catalog`
   suggests nothing rather than sending the reader to validate the file that is fine.
-- Create three complete tutorials:
-  - catching a wrong-result `NOT IN` query;
-  - fixing a non-sargable date predicate; and
-  - analyzing a real PostgreSQL JSON plan.
+- Create three complete tutorials. **Done** — `docs/tutorials/`. Every command was run
+  and every number measured against the live 13.2M-row database rather than written from
+  memory, which is how the `\restrict` gap below was found. Tutorial 2 leads with the
+  measurement that matters most: the recommended index applied *without* the rewrite is
+  111.5 ms against a 111.5 ms baseline and is never used by the planner, while the
+  coupled pair is 20.4 ms.
 - Document exactly which SQL and schema constructs are supported. **Done** — see
   [Supported constructs](SUPPORTED.md). Every entry is measured by `eval/scope-probe.ts`
   rather than inferred from source, and the probe is re-runnable after parser changes.
@@ -150,6 +152,10 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
   comments, sequences, extensions, enum types, and routines with dollar-quoted bodies are
   skipped; everything outside that allowlist still fails loudly. Fixed a latent bug where
   an `EXCLUDE` constraint fell through to the column parser and produced a phantom column.
+  Also handles the `\restrict`/`\unrestrict` psql meta-commands recent `pg_dump` wraps
+  every dump in: they are line-terminated rather than semicolon-terminated, so leaving one
+  in place merged it with the next statement and made real dumps unparseable. `\i` still
+  fails, since following it is the only way not to return a silently partial catalog.
 - Support query parameters such as `$1`, `$2`, and typed placeholders. Measured: these
   already **bind** without error, so a report is produced — but a placeholder carries no
   value, so selectivity and index advice fall back to defaults. The gap is advice quality,

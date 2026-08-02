@@ -448,3 +448,35 @@ test('a view whose columns cannot be resolved faithfully is rejected, not guesse
     }, ddl);
   }
 });
+
+test('psql meta-commands in a real pg_dump are skipped, except file includes', () => {
+  // Recent pg_dump wraps every dump in \restrict/\unrestrict. These are client
+  // directives terminated by the line, not by a semicolon, so leaving one in place
+  // merges it with the statement that follows and makes real dumps unparseable.
+  const catalog = parseSchemaCatalog(`
+    \\restrict qhneYxhQJX7gUmev9nTWP85cSdsz5V17MO54Kw55eAJhfT3hu2u1MAXlmILjGCI
+    SET statement_timeout = 0;
+    CREATE SCHEMA app;
+    CREATE TABLE app.t (id bigint PRIMARY KEY, v text);
+    \\unrestrict qhneYxhQJX7gUmev9nTWP85cSdsz5V17MO54Kw55eAJhfT3hu2u1MAXlmILjGCI
+  `);
+  assert.deepEqual(catalog.tables.map((table) => table.name), ['t']);
+  assert.deepEqual(catalog.tables[0]!.columns.map((column) => column.name), ['id', 'v']);
+
+  // A backslash inside a string is not a meta-command.
+  const literal = parseSchemaCatalog(`CREATE TABLE t (id int, note text DEFAULT '\\restrict not a command');`);
+  assert.equal(literal.tables[0]!.columns.length, 2);
+
+  // \\i pulls in another file. Skipping it would return a catalog silently missing
+  // whatever that file defined, so it fails rather than quietly under-reporting.
+  for (const include of ['\\i other.sql', '\\ir other.sql']) {
+    assert.throws(
+      () => parseSchemaCatalog(`CREATE TABLE t (id int);\n${include}\n`),
+      (error: SchemaInputError) => {
+        assert.match(error.message, /includes another file with \\i/);
+        return true;
+      },
+      include,
+    );
+  }
+});
