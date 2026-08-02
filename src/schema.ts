@@ -762,7 +762,7 @@ function ignorableStatement(tokens: Token[]): string | undefined {
   if ((first === 'create' || first === 'drop') && second === 'extension') return 'extension';
   if ((first === 'create' || first === 'drop' || first === 'alter') && second === 'type') return 'type';
   if (first === 'create' && (second === 'function' || second === 'procedure' || second === 'trigger')) return 'routine';
-  if (first === 'create' && second === 'or' && at(2) === 'replace') return 'routine';
+  if (first === 'create' && second === 'or' && at(2) === 'replace' && at(3) !== 'view') return 'routine';
 
   // `SELECT pg_catalog.set_config(...)` appears in the dump preamble.
   if (first === 'select') return 'session setup';
@@ -871,6 +871,209 @@ function alterTable(statement: string, tokens: Token[], state: ParseState): void
   // CREATE TABLE and CREATE INDEX use, so a name can only be claimed once per schema.
   registerIndexes(state, resolved.schema, table, knownIndexes);
   checkPartitionedUniqueness(table, state.partitionKeys.get(tableIdentity(resolved.schema, resolved.name)));
+}
+
+/** Relations visible to a view's SELECT list, in FROM order. */
+interface ViewSource {
+  alias: string;
+  table: MutableTable;
+}
+
+const SELECT_TAIL = new Set(['where', 'group', 'having', 'order', 'limit', 'offset', 'fetch', 'window', 'for']);
+
+/**
+ * Resolve a view's FROM clause to the tables already declared in this file.
+ *
+ * Deliberately narrow: a subquery or set operation in FROM, or a relation we have not
+ * seen, is rejected rather than guessed at. A view whose columns we cannot resolve
+ * faithfully is worse than no view at all, because every downstream claim about its
+ * columns would rest on a guess.
+ */
+function parseViewSources(tokens: Token[], start: number, end: number, state: ParseState, viewName: string): ViewSource[] {
+  const sources: ViewSource[] = [];
+  let i = start;
+  while (i < end) {
+    if (tokens[i]?.value === '(') fail(`view ${viewName} selects from a subquery, which is not supported`);
+    const qualified = parseQualifiedName(tokens, i);
+    if (!qualified) fail(`view ${viewName} has an unresolvable FROM entry`);
+    const resolved = resolveTableName(qualified, state.currentSchema);
+    const table = state.tables.get(tableIdentity(resolved.schema, resolved.name));
+    if (!table) {
+      fail(`view ${viewName} selects from unknown relation ${resolved.schema}.${resolved.name}; declare it first`);
+    }
+    i = qualified.next;
+
+    let alias = resolved.name;
+    if (keyword(tokens[i], 'as')) i += 1;
+    const candidate = identifier(tokens[i]);
+    // A bare word here is an alias unless it starts the next clause.
+    if (candidate !== undefined && !SELECT_TAIL.has(candidate) && !JOIN_WORDS.has(candidate) && candidate !== 'on' && candidate !== 'using') {
+      alias = candidate;
+      i += 1;
+    }
+    sources.push({ alias, table });
+
+    // Skip to the next relation: past the join keywords and any ON/USING condition.
+    while (i < end && !JOIN_WORDS.has(tokens[i]?.value ?? '') && tokens[i]?.value !== ',') i += 1;
+    if (i >= end) break;
+    if (tokens[i]?.value === ',') { i += 1; continue; }
+    while (i < end && JOIN_WORDS.has(tokens[i]?.value ?? '')) i += 1;
+  }
+  if (sources.length === 0) fail(`view ${viewName} has no resolvable FROM relation`);
+  return sources;
+}
+
+const JOIN_WORDS = new Set(['join', 'inner', 'left', 'right', 'full', 'cross', 'outer', 'natural', 'lateral']);
+
+/**
+ * Build the view's output columns from its SELECT list.
+ *
+ * Nullability is inherited **only** for a single-source view projecting a column
+ * directly. Anything else reports nullable, because a view column's nullability is a
+ * property of the whole query -- an outer join, aggregate or CASE can introduce NULLs
+ * that the source column's declaration does not show. Over-claiming NOT NULL would
+ * corrupt the null-rejection analysis; under-claiming only costs a weaker verdict.
+ */
+function parseViewColumns(
+  tokens: Token[],
+  selectStart: number,
+  selectEnd: number,
+  sources: ViewSource[],
+  viewName: string,
+): Column[] {
+  const single = sources.length === 1;
+  const columns: Column[] = [];
+
+  const findSource = (alias: string): ViewSource | undefined =>
+    sources.find((source) => source.alias.toLowerCase() === alias.toLowerCase()
+      || source.table.name.toLowerCase() === alias.toLowerCase());
+
+  const push = (name: string, dataType: string, nullable: boolean) => {
+    if (columns.some((column) => column.name.toLowerCase() === name.toLowerCase())) {
+      fail(`view ${viewName} produces column ${name} more than once`);
+    }
+    columns.push({ name, dataType, nullable });
+  };
+
+  for (const [start, end] of splitTopLevel(tokens, selectStart, selectEnd)) {
+    // `*` and `t.*`
+    if (tokens[start]?.value === '*' && end === start + 1) {
+      for (const source of sources) {
+        for (const column of source.table.columns) push(column.name, column.dataType, single ? column.nullable : true);
+      }
+      continue;
+    }
+    if (end === start + 3 && tokens[start + 1]?.value === '.' && tokens[start + 2]?.value === '*') {
+      const alias = identifier(tokens[start]);
+      const source = alias === undefined ? undefined : findSource(alias);
+      if (!source) fail(`view ${viewName} expands ${alias ?? '?'}.* from an unknown relation`);
+      for (const column of source.table.columns) push(column.name, column.dataType, single ? column.nullable : true);
+      continue;
+    }
+
+    // Trailing `[AS] alias`
+    let stop = end;
+    let alias: string | undefined;
+    if (end - start >= 2 && keyword(tokens[end - 2], 'as')) {
+      alias = identifier(tokens[end - 1]);
+      stop = end - 2;
+    }
+
+    // A direct column reference: `col` or `rel.col`.
+    const direct = stop === start + 1
+      ? { rel: undefined, col: identifier(tokens[start]) }
+      : stop === start + 3 && tokens[start + 1]?.value === '.'
+        ? { rel: identifier(tokens[start]), col: identifier(tokens[start + 2]) }
+        : undefined;
+
+    if (direct?.col !== undefined) {
+      const candidates = direct.rel === undefined
+        ? sources.filter((source) => source.table.columns.some((c) => c.name.toLowerCase() === direct.col!.toLowerCase()))
+        : [findSource(direct.rel)].filter(Boolean) as ViewSource[];
+      if (candidates.length === 0) fail(`view ${viewName} selects unknown column ${direct.rel ? `${direct.rel}.` : ''}${direct.col}`);
+      if (candidates.length > 1) fail(`view ${viewName} selects ambiguous column ${direct.col}`);
+      const column = candidates[0]!.table.columns.find((c) => c.name.toLowerCase() === direct.col!.toLowerCase());
+      if (!column) fail(`view ${viewName} selects unknown column ${direct.rel}.${direct.col}`);
+      push(alias ?? column.name, column.dataType, single ? column.nullable : true);
+      continue;
+    }
+
+    // A computed expression. Its type is not inferable without a planner, so it is
+    // recorded as unknown rather than guessed; an alias is required to name it.
+    if (alias === undefined) {
+      fail(`view ${viewName} has a computed output column without an AS alias, so it cannot be named`);
+    }
+    push(alias, 'unknown', true);
+  }
+
+  if (columns.length === 0) fail(`view ${viewName} produces no columns`);
+  return columns;
+}
+
+function createView(tokens: Token[], state: ParseState, materialized: boolean): void {
+  let i = materialized ? 3 : 2;
+  if (keyword(tokens[i], 'if') && keyword(tokens[i + 1], 'not') && keyword(tokens[i + 2], 'exists')) i += 3;
+  const qualified = parseQualifiedName(tokens, i);
+  if (!qualified) fail('CREATE VIEW must name a view');
+  const resolved = resolveTableName(qualified, state.currentSchema);
+  const identity = tableIdentity(resolved.schema, resolved.name);
+  i = qualified.next;
+
+  let declaredNames: string[] | undefined;
+  if (tokens[i]?.value === '(') {
+    const close = matchingParen(tokens, i);
+    declaredNames = parseIdentifierList(tokens, i, close, 'view column list');
+    i = close + 1;
+  }
+  if (!keyword(tokens[i], 'as')) fail(`view ${resolved.name} must use AS before its query`);
+  i += 1;
+  if (keyword(tokens[i], 'with')) fail(`view ${resolved.name} uses a CTE, which is not supported`);
+  if (!keyword(tokens[i], 'select')) fail(`view ${resolved.name} must be defined by a SELECT`);
+  i += 1;
+  if (keyword(tokens[i], 'distinct')) i += 1;
+
+  // Locate FROM, and the end of the FROM clause.
+  let from = -1;
+  let depth = 0;
+  for (let j = i; j < tokens.length; j += 1) {
+    const value = tokens[j]!.value;
+    if (value === '(') depth += 1;
+    else if (value === ')') depth -= 1;
+    else if (depth === 0 && (value === 'union' || value === 'intersect' || value === 'except')) {
+      fail(`view ${resolved.name} uses a set operation, which is not supported`);
+    } else if (depth === 0 && value === 'from' && from === -1) from = j;
+  }
+  if (from === -1) fail(`view ${resolved.name} must select FROM a relation`);
+
+  let fromEnd = tokens.length;
+  depth = 0;
+  for (let j = from + 1; j < tokens.length; j += 1) {
+    const value = tokens[j]!.value;
+    if (value === '(') depth += 1;
+    else if (value === ')') depth -= 1;
+    else if (depth === 0 && SELECT_TAIL.has(value)) { fromEnd = j; break; }
+  }
+
+  const sources = parseViewSources(tokens, from + 1, fromEnd, state, resolved.name);
+  let columns = parseViewColumns(tokens, i, from, sources, resolved.name);
+
+  if (declaredNames) {
+    if (declaredNames.length !== columns.length) {
+      fail(`view ${resolved.name} declares ${declaredNames.length} column names but its query produces ${columns.length}`);
+    }
+    columns = columns.map((column, index) => ({ ...column, name: declaredNames![index]! }));
+  }
+
+  const existing = state.tables.get(identity);
+  if (existing && existing.kind === undefined) fail(`table ${resolved.schema}.${resolved.name} is declared more than once`);
+  const table: MutableTable = {
+    schema: resolved.schema,
+    name: resolved.name,
+    kind: materialized ? 'materialized-view' : 'view',
+    columns,
+    indexes: [],
+  };
+  state.tables.set(identity, table);
 }
 
 function createIndex(statement: string, tokens: Token[], state: ParseState): void {
@@ -1043,6 +1246,13 @@ export function parseSchemaCatalog(sql: string): Catalog {
       else if (keyword(tokens[0], 'create') && keyword(tokens[1], 'table')) createTable(statement, tokens, state);
       else if (keyword(tokens[0], 'create') && (keyword(tokens[1], 'index') || keyword(tokens[1], 'unique'))) {
         createIndex(statement, tokens, state);
+      } else if (keyword(tokens[0], 'create') && keyword(tokens[1], 'view')) {
+        createView(tokens, state, false);
+      } else if (keyword(tokens[0], 'create') && keyword(tokens[1], 'materialized') && keyword(tokens[2], 'view')) {
+        createView(tokens, state, true);
+      } else if (keyword(tokens[0], 'create') && keyword(tokens[1], 'or') && keyword(tokens[2], 'replace')
+                 && keyword(tokens[3], 'view')) {
+        createView(tokens.slice(2), state, false);
       } else if (keyword(tokens[0], 'alter') && keyword(tokens[1], 'table')) {
         alterTable(statement, tokens, state);
       } else {

@@ -446,6 +446,9 @@ function jsonScalarIndex(block: QueryBlockIR, findings: Finding[]): Recommendati
 function materializeRecommendation(catalog: Catalog, spec: RecommendationSpec): IndexRecommendation | undefined {
   const table = findTable(catalog, spec.table);
   if (!table || !spec.keys.length) return undefined;
+  // A plain view has no storage, so CREATE INDEX on it is DDL PostgreSQL rejects.
+  // Materialized views are physical and indexable, so they are not excluded.
+  if (table.kind === 'view') return undefined;
   if (hasEquivalentIndex(table.indexes, spec)) return undefined;
 
   const id = indexDefinitionAdviceId(spec);
