@@ -303,7 +303,9 @@ test('ignoring dump noise is an allowlist, not a catch-all', () => {
   const cases: [string, RegExp][] = [
     ['CREATE TABLE t (id int); CREATE VIEW v AS SELECT id FROM t;', /unsupported statement CREATE VIEW/],
     ['CREATE TABLE t (id int); CREATE MATERIALIZED VIEW mv AS SELECT id FROM t;', /unsupported statement CREATE MATERIALIZED VIEW/],
-    ['CREATE TABLE t (id int) PARTITION BY RANGE (id);', /unsupported trailing options/],
+    // PARTITION BY used to be rejected here and is now supported; INHERITS stands in
+    // so the case still proves unknown trailing options do not slip through.
+    ['CREATE TABLE t (id int) INHERITS (other);', /unsupported trailing options/],
     ['CREATE TABLE t (id int); TRUNCATE t;', /unsupported statement TRUNCATE/],
     // Regression: EXCLUDE fell through to the column parser and produced a phantom
     // column named "exclude" with data type "using gist(id with =)".
@@ -311,6 +313,77 @@ test('ignoring dump noise is an allowlist, not a catch-all', () => {
     ['CREATE TABLE t (LIKE other);', /unsupported table constraint LIKE/],
     ['CREATE TABLE t (id int GENERATED ALWAYS AS (id) VIRTUAL);', /generated expression without STORED/],
     ["CREATE FUNCTION f() RETURNS int AS $$ SELECT 1; ", /unterminated dollar-quoted string/],
+  ];
+  for (const [ddl, expected] of cases) {
+    assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
+      assert.match(error.message, expected);
+      return true;
+    }, ddl);
+  }
+});
+
+test('partitioned tables parse, and partitions are relations in their own right', () => {
+  const catalog = parseSchemaCatalog(`
+    CREATE SCHEMA s;
+    CREATE TABLE s.events (
+      id bigint,
+      occurred_at date NOT NULL,
+      payload text,
+      PRIMARY KEY (id, occurred_at)
+    ) PARTITION BY RANGE (occurred_at);
+    CREATE TABLE s.events_2024 PARTITION OF s.events
+      FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+    CREATE TABLE s.events_rest PARTITION OF s.events DEFAULT;
+    CREATE INDEX events_payload ON s.events (payload);
+  `);
+
+  assert.deepEqual(catalog.tables.map((t) => t.name), ['events', 'events_2024', 'events_rest']);
+  const parent = catalog.tables[0]!;
+  const child = catalog.tables[1]!;
+
+  // A partition is queryable directly, so it carries the parent's columns and the
+  // primary key PostgreSQL materialises on each partition -- under its own index name.
+  assert.deepEqual(child.columns.map((c) => c.name), parent.columns.map((c) => c.name));
+  assert.deepEqual(child.primaryKey, ['id', 'occurred_at']);
+  assert.deepEqual(child.indexes.map((i) => i.name), ['events_2024_pkey']);
+  assert.deepEqual(parent.indexes.map((i) => i.name), ['events_pkey', 'events_payload']);
+});
+
+test('the pg_dump ATTACH PARTITION form parses', () => {
+  const catalog = parseSchemaCatalog(`
+    CREATE SCHEMA s;
+    CREATE TABLE s.events (id bigint NOT NULL, occurred_at date NOT NULL) PARTITION BY RANGE (occurred_at);
+    CREATE TABLE s.events_2024 (id bigint NOT NULL, occurred_at date NOT NULL);
+    ALTER TABLE ONLY s.events ATTACH PARTITION s.events_2024
+      FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+  `);
+  assert.deepEqual(catalog.tables.map((t) => t.name), ['events', 'events_2024']);
+});
+
+test('a unique constraint PostgreSQL would refuse on a partitioned table is refused here', () => {
+  // Uniqueness is what the join fan-out proof reads. Accepting a constraint the real
+  // database never enforces would make SQLSage assert a relation is unique when the
+  // server could hold duplicates -- a wrong correctness verdict, not a missing one.
+  const cases: [string, RegExp][] = [
+    ['CREATE SCHEMA s; CREATE TABLE s.e (id bigint, at date NOT NULL, PRIMARY KEY (id)) PARTITION BY RANGE (at);',
+      /must include partition key column at/],
+    ['CREATE SCHEMA s; CREATE TABLE s.e (id bigint NOT NULL, at date NOT NULL, UNIQUE (id)) PARTITION BY RANGE (at);',
+      /must include partition key column at/],
+    // The rule applies however the constraint arrives.
+    ['CREATE SCHEMA s; CREATE TABLE s.e (id bigint NOT NULL, at date NOT NULL) PARTITION BY RANGE (at); ALTER TABLE s.e ADD PRIMARY KEY (id);',
+      /must include partition key column at/],
+    // PostgreSQL permits no unique constraint at all when the key is an expression.
+    ["CREATE SCHEMA s; CREATE TABLE s.e (id bigint NOT NULL, at timestamptz NOT NULL, UNIQUE (id)) PARTITION BY RANGE (date_trunc('day', at));",
+      /not allowed on e, which is partitioned by an expression/],
+    ['CREATE SCHEMA s; CREATE TABLE s.e (id bigint NOT NULL) PARTITION BY RANGE (nope);',
+      /references unknown column nope/],
+    ['CREATE SCHEMA s; CREATE TABLE s.e (id bigint NOT NULL) PARTITION BY WEIRD (id);',
+      /must use RANGE, LIST, or HASH/],
+    ['CREATE SCHEMA s; CREATE TABLE s.c PARTITION OF s.nope DEFAULT;',
+      /PARTITION OF unknown table s\.nope/],
+    // PARTITION BY must not have opened the trailing-options gate for anything else.
+    ['CREATE SCHEMA s; CREATE TABLE s.e (id bigint NOT NULL) INHERITS (other);',
+      /unsupported trailing options/],
   ];
   for (const [ddl, expected] of cases) {
     assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
