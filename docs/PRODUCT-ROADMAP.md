@@ -178,7 +178,16 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
   floor applied to total rows rather than per-loop figures -- judging it per loop
   discarded a 1 -> 3 row error repeated two million times, which is four million rows
   misjudged and the classic nested-loop blow-up.
-- Test supported PostgreSQL versions in CI.
+- Test supported PostgreSQL versions in CI. **Done.** A `live` job runs a
+  `[14, 15, 16, 17]` service matrix, seeds `eval/ci-seed.sql`, and exercises the
+  connected path the offline suite cannot reach: introspection, `doctor`, live
+  `EXPLAIN`, and live `EXPLAIN ANALYZE`. Validated locally against real 14.23 and 17.10
+  servers before being committed, rather than assumed to work.
+
+  `eval/ci-seed.sql` is a few thousand rows in the corpus shape, deliberately **not**
+  the 13.2M-row reference dataset: nothing CI measures is a performance result, since
+  timings depend on the runner. It keeps NULL `customer_id` values so the q05
+  nullable-`NOT IN` correctness path stays reachable.
 - Expand the regression corpus with sanitized real-user queries.
 - Use dedicated issue labels for false positives, false negatives, unsafe
   recommendations, unsupported SQL, plan interpretation, and documentation.
