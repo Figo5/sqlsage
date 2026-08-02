@@ -319,8 +319,18 @@ export interface ExecutionAnalysis {
   }>;
   /** Operations that will spill to disk at the given work_mem. */
   memoryRisks: Array<{ operation: string; why: string }>;
-  /** Places where the planner's row estimate is likely to be badly wrong. */
-  estimationRisks: Array<{ where: string; why: string; direction: 'over' | 'under' | 'unknown' }>;
+  /**
+   * Places where the planner's row estimate is likely to be badly wrong, worst first.
+   *
+   * `severe` marks a misestimate large enough to be the likely cause of the plan
+   * shape rather than a detail within it, so a renderer can lead with it.
+   */
+  estimationRisks: Array<{
+    where: string;
+    why: string;
+    direction: 'over' | 'under' | 'unknown';
+    severe?: boolean;
+  }>;
   /** How runtime grows with data volume. */
   scalability: { summary: string; complexity?: string };
 }

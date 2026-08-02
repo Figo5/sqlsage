@@ -213,3 +213,49 @@ test('rejects malformed or ambiguous plan inputs with concise PlanInputError mes
     );
   }
 });
+
+test('row misestimates are filtered, ranked by rows misjudged, and flagged when severe', async () => {
+  const catalog = await loadCatalog(new URL('../corpus/catalog.json', import.meta.url).pathname);
+  const base = analyze('SELECT order_id FROM shop.orders', catalog).analysis;
+
+  const node = (nodeType: string, planRows: number, actualRows: number, loops = 1) => ({
+    'Node Type': nodeType, 'Relation Name': 'orders',
+    'Plan Rows': planRows, 'Actual Rows': actualRows, 'Actual Loops': loops,
+    'Total Cost': 1, 'Actual Total Time': 1,
+  });
+  const risksFor = (...nodes: ReturnType<typeof node>[]) => {
+    const [root, ...children] = nodes;
+    const plan: Record<string, unknown> = { ...root! };
+    if (children.length) plan.Plans = children;
+    return applyPlanEvidence(base, normalizePlanEvidence([{ Plan: plan, 'Execution Time': 1 }]))
+      .execution.estimationRisks;
+  };
+
+  // Noise floors: a 5x ratio over four rows, and a large node off by only 1.5x.
+  assert.deepEqual(risksFor(node('Seq Scan', 1, 5)), []);
+  assert.deepEqual(risksFor(node('Seq Scan', 1000, 1500)), []);
+
+  // A small per-loop error repeated two million times is four million rows misjudged.
+  // Judging the floor per loop would discard the most damaging shape there is.
+  const nested = risksFor(node('Nested Loop', 1, 3, 2_000_000));
+  assert.equal(nested.length, 1);
+  assert.match(nested[0]!.why, /4,000,000 row\(s\) misjudged/);
+  assert.equal(nested[0]!.severe, false); // a 3x per-loop ratio does not define the plan
+
+  // Severe: large ratio and large consequence, so the renderer can lead with it.
+  const severe = risksFor(node('Index Scan', 10_000, 200_000));
+  assert.equal(severe[0]!.severe, true);
+  assert.equal(severe[0]!.direction, 'under');
+  assert.match(severe[0]!.why, /20x more than estimated/);
+  assert.match(severe[0]!.why, /usually why the planner chose the shape it did/);
+
+  // Ranked by total rows misjudged, not by ratio: Hash Join is off by ~899,000.
+  const ranked = risksFor(node('Hash Join', 1_000, 900_000), node('Sort', 500, 2_000), node('Aggregate', 100, 400));
+  assert.deepEqual(ranked.map((risk) => risk.where), ['Hash Join on orders', 'Sort on orders', 'Aggregate on orders']);
+
+  // A plan with no actual rows cannot support any of these claims.
+  const planOnly = applyPlanEvidence(base, normalizePlanEvidence([{ Plan: {
+    'Node Type': 'Seq Scan', 'Relation Name': 'orders', 'Plan Rows': 10, 'Total Cost': 1,
+  } }]));
+  assert.deepEqual(planOnly.execution.estimationRisks, []);
+});

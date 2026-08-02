@@ -152,7 +152,14 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
   value, so selectivity and index advice fall back to defaults. The gap is advice quality,
   not parsing.
 - Add `sqlsage compare` for comparing saved plans or before-and-after query versions.
-- Show estimated-versus-actual row errors prominently.
+- Show estimated-versus-actual row errors prominently. **Done.** Analyzed plans already
+  computed these; they now lead. Risks are ranked by **total rows misjudged**
+  (`|actual - estimated| x loops`), not by ratio, and a misestimate that is both large in
+  ratio and large in consequence is marked `severe` and rendered with the same prominence
+  as a spill risk. Two noise floors keep the list honest: a factor floor, and an absolute
+  floor applied to total rows rather than per-loop figures -- judging it per loop
+  discarded a 1 -> 3 row error repeated two million times, which is four million rows
+  misjudged and the classic nested-loop blow-up.
 - Test supported PostgreSQL versions in CI.
 - Expand the regression corpus with sanitized real-user queries.
 - Use dedicated issue labels for false positives, false negatives, unsafe

@@ -567,6 +567,9 @@ function validatedExecution(value: unknown, problems: string[]): ExecutionAnalys
       direction: ['over', 'under', 'unknown'].includes(item.direction as string)
         ? item.direction as 'over' | 'under' | 'unknown'
         : (problems.push(`${path}.direction was invalid and was rendered as unknown.`), 'unknown'),
+      // Only a real boolean promotes a risk to the prominent treatment; anything
+      // else is ignored rather than coerced, so a stray truthy value cannot shout.
+      ...(item.severe === true ? { severe: true } : {}),
     }),
   );
 

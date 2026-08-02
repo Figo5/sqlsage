@@ -185,6 +185,18 @@ Accepts raw `EXPLAIN (FORMAT JSON)` output and SQLSage evidence bundles. A bundl
 SQL must match the query being analyzed; mismatched evidence is rejected rather than
 silently trusted. Validate one with `sqlsage doctor --plan plan.json`.
 
+### Estimated versus actual rows
+
+A plan captured with `EXPLAIN ANALYZE` (via `--analyze` or a saved analyzed plan) carries
+actual row counts, so SQLSage reports where the planner's estimate diverged. Nothing is
+claimed from a plan without actual rows.
+
+Risks are ranked by **total rows misjudged** — `|actual - estimated| x loops` — rather
+than by ratio, because `Plan Rows` and `Actual Rows` are both per-loop figures and the
+damage scales with the loop count. A misestimate that is large in both ratio and
+consequence is called out prominently, since one that big usually explains the plan shape
+rather than being a detail within it.
+
 ## Checking your own inputs
 
 `sqlsage doctor` answers these questions for a specific file instead of in general, and
