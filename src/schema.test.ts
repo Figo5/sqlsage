@@ -145,3 +145,49 @@ test('wraps file read failures as SchemaInputError', async () => {
     (error: unknown) => error instanceof SchemaInputError && /could not read schema/.test(error.message),
   );
 });
+
+test('UNIQUE constraints become unique indexes without forcing NOT NULL', () => {
+  const catalog = parseSchemaCatalog(`
+    CREATE SCHEMA s;
+    CREATE TABLE s.t (
+      id bigint PRIMARY KEY,
+      email text UNIQUE,
+      badge text NOT NULL CONSTRAINT badge_uq UNIQUE,
+      a text, b text,
+      UNIQUE (a, b)
+    );
+  `);
+  const t = catalog.tables[0]!;
+
+  // PostgreSQL's own naming, so a recommendation never proposes an index that
+  // already exists under the name the server would have chosen.
+  assert.deepEqual(t.indexes.map((i) => i.name), ['t_pkey', 't_email_key', 'badge_uq', 't_a_b_key']);
+  assert.ok(t.indexes.every((i) => i.unique));
+  assert.deepEqual(t.indexes.find((i) => i.name === 't_a_b_key')!.columns, ['a', 'b']);
+
+  // The load-bearing part. UNIQUE does not imply NOT NULL -- PostgreSQL treats
+  // NULLs as distinct, so a unique column may hold many of them. Copying the
+  // primary-key behaviour here would silently claim a column is non-nullable and
+  // corrupt the null-rejection analysis.
+  const nullable = Object.fromEntries(t.columns.map((c) => [c.name, c.nullable]));
+  assert.equal(nullable.email, true);
+  assert.equal(nullable.a, true);
+  assert.equal(nullable.badge, false); // only because NOT NULL was declared too
+  assert.equal(t.primaryKey!.length, 1);
+});
+
+test('malformed UNIQUE constraints are rejected rather than half-understood', () => {
+  const cases: [string, RegExp][] = [
+    ['CREATE SCHEMA s; CREATE TABLE s.t (id bigint PRIMARY KEY, UNIQUE (nope));', /unknown column nope/],
+    ['CREATE SCHEMA s; CREATE TABLE s.t (id bigint PRIMARY KEY, UNIQUE);', /must contain a column list/],
+    // NULLS NOT DISTINCT changes the semantics we would be asserting, so it is
+    // refused rather than parsed into a plain unique index.
+    ['CREATE SCHEMA s; CREATE TABLE s.t (id bigint PRIMARY KEY, e text, UNIQUE (e) NULLS NOT DISTINCT);', /unsupported trailing options/],
+  ];
+  for (const [ddl, expected] of cases) {
+    assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
+      assert.match(error.message, expected);
+      return true;
+    }, ddl);
+  }
+});

@@ -53,22 +53,34 @@ literal generally yields better advice. Improving this is on the roadmap.
 | Covering indexes (`INCLUDE (...)`) | supported |
 | Non-btree access methods (`USING gin`, etc.) | supported |
 | `ALTER TABLE` | **not supported** |
-| `UNIQUE` as a column or table constraint | **not supported** — see below |
+| `UNIQUE` as a column or table constraint | supported |
 | `CHECK` constraints | **not supported** |
 | Generated and identity columns (`GENERATED ...`) | **not supported** |
 | Partitioned tables (`PARTITION BY`) | **not supported** |
 | `CREATE VIEW`, `CREATE MATERIALIZED VIEW` | **not supported** |
 
-### Uniqueness is supported, but only spelled as an index
+### Uniqueness
 
-This distinction matters more than it looks. Uniqueness is load-bearing for SQLSage: it is
-how the join analysis decides whether a join multiplies rows, which is what drives
-correctness findings about over-counted aggregates.
+Uniqueness is load-bearing for SQLSage: it is how the join analysis decides whether a
+join multiplies rows, which drives correctness findings about over-counted aggregates.
 
-`CREATE UNIQUE INDEX i ON shop.t (k)` is understood. `UNIQUE` written as a column or table
-constraint is not, and neither is `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE`. If your
-schema declares uniqueness that way, SQLSage will reject the file rather than quietly
-treat the column as non-unique — but you can express the same fact as a unique index.
+All three spellings inside `CREATE TABLE` are understood and become unique indexes:
+
+```sql
+CREATE TABLE s.t (
+  email text UNIQUE,                       -- column constraint
+  a text, b text, UNIQUE (a, b),           -- table constraint, composite
+  badge text CONSTRAINT badge_uq UNIQUE    -- named
+);
+CREATE UNIQUE INDEX i ON s.t (k);          -- and the explicit index form
+```
+
+`UNIQUE` does **not** imply `NOT NULL`. PostgreSQL treats NULLs as distinct, so a unique
+column may hold many of them, and SQLSage leaves nullability exactly as declared.
+
+`UNIQUE ... NULLS NOT DISTINCT` (PostgreSQL 15+) is rejected rather than parsed into a
+plain unique index, because it asserts something different. `ALTER TABLE ... ADD
+CONSTRAINT ... UNIQUE` is still unsupported, since `ALTER TABLE` is.
 
 ### Working around an unsupported construct
 
