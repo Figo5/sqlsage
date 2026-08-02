@@ -29,3 +29,57 @@ jobs:
       - run: node eval/run.ts
       - run: npm run build
       - run: npm run test:install
+
+  # Does SQLSage work against a given PostgreSQL major version at all? This job
+  # exercises the connected path -- introspection, doctor, live EXPLAIN and
+  # EXPLAIN ANALYZE -- which the offline suite cannot reach.
+  #
+  # It seeds eval/ci-seed.sql, a few thousand rows, NOT the 13.2M-row reference
+  # dataset. Nothing measured here is a performance result: timings depend on the
+  # runner, and reproducing the reference database in CI would not change that.
+  live:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['14', '15', '16', '17']
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_PASSWORD: sage
+          POSTGRES_DB: sage
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SQLSAGE_LIVE_TEST: '1'
+      SQLSAGE_TEST_DATABASE_URL: postgresql://postgres:sage@127.0.0.1:5432/sage
+      PGPASSWORD: sage
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+      - name: Seed the compatibility fixture
+        run: |
+          psql "$SQLSAGE_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f corpus/schema.sql
+          psql "$SQLSAGE_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f eval/ci-seed.sql
+      - name: Report the server version under test
+        run: psql "$SQLSAGE_TEST_DATABASE_URL" -tAc "SELECT version()"
+      - run: npm test
+      - name: doctor against the live server
+        run: node src/cli.ts doctor --database-url "$SQLSAGE_TEST_DATABASE_URL" --schema-name shop
+      - name: live plan capture
+        run: node src/cli.ts analyze --corpus q05 --database-url "$SQLSAGE_TEST_DATABASE_URL" --schema-name shop --format json > /dev/null
+      - name: live EXPLAIN ANALYZE capture
+        run: node src/cli.ts analyze --corpus q05 --database-url "$SQLSAGE_TEST_DATABASE_URL" --schema-name shop --analyze --statement-timeout 30000 --format json > /dev/null
+      - name: the fixture still has exactly the eight baseline indexes
+        run: |
+          n=$(psql "$SQLSAGE_TEST_DATABASE_URL" -tAc "SELECT count(*) FROM pg_indexes WHERE schemaname='shop'")
+          test "$n" = "8" || { echo "::error::expected 8 baseline indexes, found $n"; exit 1; }
