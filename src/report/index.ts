@@ -743,11 +743,23 @@ function executionBlocks(m: ReportModel): Block[] {
   for (const r of mem) {
     out.push({ kind: 'note', tone: 'warn', label: `Spill risk — ${oneLine(r.operation)}`, text: oneLine(r.why) });
   }
-  if (est.length) {
+  // A severe misestimate explains the plan rather than annotating it, so it gets the
+  // same prominence as a spill risk instead of trailing the section as muted text.
+  const label = (r: typeof est[number]) => r.direction === 'unknown' ? 'unreliable' : `${r.direction}-estimated`;
+  for (const r of est.filter((risk) => risk.severe)) {
+    out.push({
+      kind: 'note',
+      tone: 'warn',
+      label: `Row estimate ${label(r)} — ${oneLine(r.where)}`,
+      text: oneLine(r.why),
+    });
+  }
+  const remaining = est.filter((risk) => !risk.severe);
+  if (remaining.length) {
     out.push({
       kind: 'list',
-      items: est.map((r) => ({
-        text: `Row estimate at ${oneLine(r.where)} is likely **${r.direction === 'unknown' ? 'unreliable' : r.direction + '-estimated'}** — ${oneLine(r.why)}`,
+      items: remaining.map((r) => ({
+        text: `Row estimate at ${oneLine(r.where)} is likely **${label(r)}** — ${oneLine(r.why)}`,
         tone: 'muted',
       })),
     });

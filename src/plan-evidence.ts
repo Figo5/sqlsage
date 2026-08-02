@@ -378,15 +378,7 @@ function executionFromEvidence(predicted: ExecutionAnalysis, evidence: PlanEvide
     operation: `${spill.nodeType}${spill.relation ? ` on ${spill.relation}` : ''}`,
     why: `The saved ${modeLabel} records ${spill.reason}`,
   }));
-  const observedEstimationRisks = summary.rowEstimateRatios
-    .filter((item) => item.factor === undefined || item.factor >= 2)
-    .map((item) => ({
-      where: `${item.nodeType}${item.relation ? ` on ${item.relation}` : ''}`,
-      why: item.actualRows === 0
-        ? `The saved analyzed plan estimated ${formatNumber(item.estimatedRows)} row(s) per loop and observed none.`
-        : `The saved analyzed plan estimated ${formatNumber(item.estimatedRows)} row(s) per loop and observed ${formatNumber(item.actualRows)} (${formatNumber(item.factor)}x ${item.direction === 'under' ? 'more' : 'fewer'} than estimated).`,
-      direction: item.direction === 'accurate' ? 'unknown' as const : item.direction,
-    }));
+  const observedEstimationRisks = rankedEstimationRisks(summary.rowEstimateRatios, modeLabel);
 
   return {
     accessPaths,
@@ -440,6 +432,61 @@ function firstDescendantIndex(node: NormalizedPlanNode): string | undefined {
     if (nested) return nested;
   }
   return undefined;
+}
+
+/**
+ * A row misestimate is the most common single explanation for a bad plan, so these are
+ * ranked worst-first and the largest is marked severe for the renderer to lead with.
+ *
+ * Two guards keep the list honest rather than merely long:
+ *
+ *  - an absolute floor. A node estimating 1 row and returning 5 is a 5x factor and
+ *    four rows of consequence; ranking that beside 10,000 -> 200,000 would bury the
+ *    finding that matters under arithmetic noise.
+ *  - ranking by total rows misjudged, not by the ratio. `Plan Rows` and `Actual Rows`
+ *    are both per-loop, so the ratio is comparable, but the damage scales with
+ *    rows x loops -- a small per-loop error repeated two million times costs more than
+ *    a large one seen once.
+ */
+const ESTIMATE_FACTOR_FLOOR = 2;
+const ESTIMATE_ROW_FLOOR = 100;
+const ESTIMATE_SEVERE_FACTOR = 10;
+const ESTIMATE_SEVERE_ROWS = 1_000;
+
+export function estimateRowsMisjudged(item: RowEstimateRatio): number {
+  const loops = item.actualLoops || 1;
+  return Math.abs(item.actualRows - item.estimatedRows) * loops;
+}
+
+function rankedEstimationRisks(
+  ratios: RowEstimateRatio[],
+  modeLabel: string,
+): ExecutionAnalysis['estimationRisks'] {
+  return ratios
+    .filter((item) => item.direction !== 'accurate')
+    .filter((item) => item.factor === undefined || item.factor >= ESTIMATE_FACTOR_FLOOR)
+    // The floor applies to TOTAL rows misjudged, not the per-loop figures. Two rows
+    // wrong on each of two million loops is four million rows of consequence, and is
+    // precisely the nested-loop blow-up worth reporting; judging it per loop would
+    // discard the most damaging shape there is.
+    .filter((item) => estimateRowsMisjudged(item) >= ESTIMATE_ROW_FLOOR)
+    .sort((a, b) => estimateRowsMisjudged(b) - estimateRowsMisjudged(a))
+    .slice(0, 3)
+    .map((item) => {
+      const loops = item.actualLoops || 1;
+      const total = loops > 1 ? ` Across ${formatNumber(loops)} loop(s) that is about ${formatNumber(estimateRowsMisjudged(item))} row(s) misjudged.` : '';
+      const severe = (item.factor ?? Infinity) >= ESTIMATE_SEVERE_FACTOR
+        && estimateRowsMisjudged(item) >= ESTIMATE_SEVERE_ROWS;
+      return {
+        where: `${item.nodeType}${item.relation ? ` on ${item.relation}` : ''}`,
+        why: item.actualRows === 0
+          ? `The ${modeLabel} estimated ${formatNumber(item.estimatedRows)} row(s) per loop and observed none.${total}`
+          : `The ${modeLabel} estimated ${formatNumber(item.estimatedRows)} row(s) per loop and observed ${formatNumber(item.actualRows)} (${formatNumber(item.factor)}x ${item.direction === 'under' ? 'more' : 'fewer'} than estimated).${total}`
+          + (severe ? ' A misestimate this large is usually why the planner chose the shape it did; treat the rest of this plan as a consequence of it.' : ''),
+        direction: item.direction === 'accurate' ? 'unknown' as const : item.direction,
+        severe,
+      };
+    });
 }
 
 function rowEstimateRatio(node: NormalizedPlanNode): RowEstimateRatio[] {
