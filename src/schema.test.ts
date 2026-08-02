@@ -125,9 +125,11 @@ test('rejects unsupported DDL rather than returning a partial catalog', () => {
     (error: unknown) => error instanceof SchemaInputError
       && /statement 2: unsupported statement CREATE VIEW v/.test(error.message),
   );
+  // CHECK used to be rejected here. It is now accepted (and not modelled), so this
+  // asserts on COLLATE instead -- still unsupported, so the test keeps its point.
   assert.throws(
-    () => parseSchemaCatalog('CREATE TABLE t (id int CHECK (id > 0));'),
-    (error: unknown) => error instanceof SchemaInputError && /unsupported construct CHECK/i.test(error.message),
+    () => parseSchemaCatalog('CREATE TABLE t (id int COLLATE "C");'),
+    (error: unknown) => error instanceof SchemaInputError && /unsupported construct COLLATE/i.test(error.message),
   );
 });
 
@@ -225,7 +227,8 @@ test('ALTER TABLE refuses actions it does not model instead of ignoring them', (
   const cases: [string, RegExp][] = [
     // Order matters, exactly as it does for PostgreSQL.
     [`${base} ALTER TABLE s.zzz ADD UNIQUE (k);`, /unknown table s\.zzz/],
-    [`${base} ALTER TABLE s.t ADD CONSTRAINT c CHECK (k > 0);`, /unsupported table constraint CHECK/],
+    // CHECK is now accepted; EXCLUDE stands in as a constraint still not modelled.
+    [`${base} ALTER TABLE s.t ADD EXCLUDE USING gist (k WITH =);`, /unsupported table constraint EXCLUDE/],
     [`${base} ALTER TABLE s.t DROP COLUMN v;`, /unsupported action DROP/],
     // Silently accepting these would imply we modelled them.
     [`${base} ALTER TABLE s.t ALTER COLUMN v SET DEFAULT 'x';`, /unsupported ALTER COLUMN action on v/],
@@ -235,6 +238,79 @@ test('ALTER TABLE refuses actions it does not model instead of ignoring them', (
     // A primary key column cannot become nullable.
     [`${base} ALTER TABLE s.t ALTER COLUMN id DROP NOT NULL;`, /cannot drop NOT NULL from primary key column id/],
     [`${base} ALTER TABLE s.t;`, /has no action/],
+  ];
+  for (const [ddl, expected] of cases) {
+    assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
+      assert.match(error.message, expected);
+      return true;
+    }, ddl);
+  }
+});
+
+test('a realistic pg_dump --schema-only file parses end to end', () => {
+  const catalog = parseSchemaCatalog(`
+    SET statement_timeout = 0;
+    SET default_table_access_method = heap;
+    SELECT pg_catalog.set_config('search_path', '', false);
+    CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+    CREATE SCHEMA app;
+    ALTER SCHEMA app OWNER TO postgres;
+    CREATE TYPE app.status AS ENUM ('new', 'done');
+    CREATE FUNCTION app.touch() RETURNS trigger AS $$
+    BEGIN
+      NEW.updated_at = now();  -- a semicolon inside the body must not split the file
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE SEQUENCE app.orders_id_seq AS bigint START WITH 1;
+    ALTER SEQUENCE app.orders_id_seq OWNED BY app.orders.id;
+    CREATE TABLE app.orders (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        ref text NOT NULL,
+        state app.status DEFAULT 'new'::app.status NOT NULL,
+        qty int CONSTRAINT qty_ck CHECK (qty > 0),
+        label text GENERATED ALWAYS AS (ref) STORED,
+        CHECK (qty < 1000)
+    );
+    ALTER TABLE app.orders OWNER TO postgres;
+    ALTER TABLE ONLY app.orders ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
+    ALTER TABLE ONLY app.orders ADD CONSTRAINT orders_ref_key UNIQUE (ref);
+    CREATE INDEX orders_state_idx ON app.orders USING btree (state);
+    CREATE TRIGGER orders_touch BEFORE UPDATE ON app.orders FOR EACH ROW EXECUTE FUNCTION app.touch();
+    GRANT SELECT ON TABLE app.orders TO readonly;
+    COMMENT ON TABLE app.orders IS 'order headers';
+  `);
+
+  assert.equal(catalog.tables.length, 1);
+  const orders = catalog.tables[0]!;
+  assert.equal(orders.schema, 'app');
+  assert.deepEqual(orders.columns.map((c) => c.name), ['id', 'ref', 'state', 'qty', 'label']);
+  assert.deepEqual(orders.primaryKey, ['id']);
+  assert.deepEqual(orders.indexes.map((i) => i.name), ['orders_pkey', 'orders_ref_key', 'orders_state_idx']);
+
+  const nullable = Object.fromEntries(orders.columns.map((c) => [c.name, c.nullable]));
+  assert.equal(nullable.id, false);    // GENERATED ALWAYS AS IDENTITY implies NOT NULL
+  assert.equal(nullable.label, true);  // a stored generated column is an ordinary nullable column
+  assert.equal(nullable.qty, true);    // a CHECK does not constrain nullability
+  // An enum column keeps its type name as an opaque string, which is all the analysis uses.
+  assert.equal(orders.columns.find((c) => c.name === 'state')!.dataType, 'app.status');
+});
+
+test('ignoring dump noise is an allowlist, not a catch-all', () => {
+  // Everything outside the allowlist must still fail loudly. A parser that quietly
+  // skipped what it did not understand would return a catalog silently missing keys
+  // or indexes, and every downstream uniqueness and fan-out claim would inherit it.
+  const cases: [string, RegExp][] = [
+    ['CREATE TABLE t (id int); CREATE VIEW v AS SELECT id FROM t;', /unsupported statement CREATE VIEW/],
+    ['CREATE TABLE t (id int); CREATE MATERIALIZED VIEW mv AS SELECT id FROM t;', /unsupported statement CREATE MATERIALIZED VIEW/],
+    ['CREATE TABLE t (id int) PARTITION BY RANGE (id);', /unsupported trailing options/],
+    ['CREATE TABLE t (id int); TRUNCATE t;', /unsupported statement TRUNCATE/],
+    // Regression: EXCLUDE fell through to the column parser and produced a phantom
+    // column named "exclude" with data type "using gist(id with =)".
+    ['CREATE TABLE t (id int, EXCLUDE USING gist (id WITH =));', /unsupported table constraint EXCLUDE/],
+    ['CREATE TABLE t (LIKE other);', /unsupported table constraint LIKE/],
+    ['CREATE TABLE t (id int GENERATED ALWAYS AS (id) VIRTUAL);', /generated expression without STORED/],
+    ["CREATE FUNCTION f() RETURNS int AS $$ SELECT 1; ", /unterminated dollar-quoted string/],
   ];
   for (const [ddl, expected] of cases) {
     assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
