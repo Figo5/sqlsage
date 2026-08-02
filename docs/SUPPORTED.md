@@ -56,7 +56,7 @@ literal generally yields better advice. Improving this is on the roadmap.
 | `UNIQUE` as a column or table constraint | supported |
 | `CHECK` constraints | accepted; predicate not modelled |
 | Generated and identity columns (`GENERATED ...`) | supported |
-| Partitioned tables (`PARTITION BY`) | **not supported** |
+| Partitioned tables (`PARTITION BY`, `PARTITION OF`, `ATTACH PARTITION`) | supported |
 | `CREATE VIEW`, `CREATE MATERIALIZED VIEW` | **not supported** |
 
 ### Uniqueness
@@ -131,6 +131,25 @@ an ordinary nullable column whose value happens to be computed.
 loudly. A parser that quietly ignored what it did not understand would hand back a catalog
 silently missing keys or indexes, and every downstream claim about uniqueness, nullability
 and join fan-out would inherit that gap.
+
+### Partitioned tables
+
+`PARTITION BY RANGE | LIST | HASH`, `CREATE TABLE ... PARTITION OF ...`, and the
+`ALTER TABLE ... ATTACH PARTITION` form `pg_dump` emits all parse.
+
+Each partition becomes a relation in its own right, carrying the parent's columns and the
+primary key PostgreSQL materialises on every partition. That separation is deliberate: a
+unique index declared on **one partition** is unique only within that partition, and
+folding partitions into the parent would over-claim uniqueness.
+
+SQLSage enforces PostgreSQL's own rule that a `PRIMARY KEY` or `UNIQUE` on a partitioned
+table must include every partition key column, and that a table partitioned by an
+*expression* may carry no unique constraint at all. Both are rejected rather than
+accepted, because uniqueness is what the join fan-out proof reads: accepting a constraint
+the server would refuse would make SQLSage assert a relation is unique when the real
+database could hold duplicates.
+
+Partition bounds and pruning are not modelled.
 
 ## Plan inputs (`--plan`)
 

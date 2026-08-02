@@ -131,7 +131,11 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
     generated column is an ordinary nullable column;
   - `CHECK` constraints — **accepted, predicate not modelled.** A CHECK cannot change
     the column set, keys, indexes or nullability, so skipping it costs nothing;
-  - partitioned tables (`PARTITION BY`) — not supported;
+  - partitioned tables — **done.** `PARTITION BY RANGE/LIST/HASH`, `PARTITION OF`, and
+    the `ATTACH PARTITION` form. Each partition is modelled as its own relation, and
+    PostgreSQL's rule that a unique constraint must cover the partition key (and that an
+    expression key permits none) is enforced rather than assumed. Bounds and pruning are
+    not modelled;
   - views and materialized views — not supported; and
   - **multi-schema references — already supported**, including cross-schema foreign keys.
     Measured, correcting an earlier assumption in this document.

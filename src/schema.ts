@@ -39,10 +39,18 @@ interface MutableTable extends Table {
   foreignKeys?: ForeignKeyDraft[];
 }
 
+interface PartitionKey {
+  columns: string[];
+  /** True when any key element is an expression rather than a bare column. */
+  hasExpression: boolean;
+}
+
 interface ParseState {
   currentSchema: string;
   tables: Map<string, MutableTable>;
   indexes: Map<string, string>;
+  /** Partition key per table identity, for the uniqueness rule above. */
+  partitionKeys: Map<string, PartitionKey>;
 }
 
 const INDEX_METHODS = new Set<IndexDef['method']>([
@@ -557,6 +565,76 @@ function parseTableConstraint(tokens: Token[], start: number, end: number, table
   fail(`table ${table.name} uses unsupported table constraint ${construct}`);
 }
 
+/** Claim each of a table's index names for its schema, rejecting a reused name. */
+function registerIndexes(state: ParseState, schema: string, table: MutableTable, from = 0): void {
+  for (const index of table.indexes.slice(from)) {
+    const normalized = `${schema}.${index.name}`.toLowerCase();
+    if (state.indexes.has(normalized)) fail(`index ${index.name} is declared more than once`);
+    state.indexes.set(normalized, table.name);
+  }
+}
+
+/**
+ * `PARTITION BY {RANGE|LIST|HASH} (key, ...)`. Returns the partition key columns.
+ *
+ * Expression keys are recorded separately: PostgreSQL allows no unique constraint at
+ * all on a table partitioned by an expression, so they are not merely "no columns".
+ */
+function parsePartitionBy(tokens: Token[], at: number, end: number, table: MutableTable): PartitionKey {
+  // `at` indexes the PARTITION keyword, so BY is at +1 and the method at +2.
+  const method = tokens[at + 2];
+  if (!keyword(method, 'range') && !keyword(method, 'list') && !keyword(method, 'hash')) {
+    fail(`PARTITION BY on ${table.name} must use RANGE, LIST, or HASH`);
+  }
+  const open = at + 3;
+  if (tokens[open]?.value !== '(') fail(`PARTITION BY on ${table.name} must contain a key`);
+  const close = matchingParen(tokens, open, end);
+  if (close + 1 !== end) fail(`PARTITION BY on ${table.name} has unsupported trailing options`);
+
+  const columns: string[] = [];
+  let hasExpression = false;
+  for (const [start, stop] of splitTopLevel(tokens, open + 1, close)) {
+    const name = stop === start + 1 ? identifier(tokens[start]) : undefined;
+    if (name === undefined) hasExpression = true;
+    else columns.push(name);
+  }
+  if (columns.length === 0 && !hasExpression) fail(`PARTITION BY on ${table.name} must name at least one key`);
+  return { columns, hasExpression };
+}
+
+/**
+ * PostgreSQL refuses a primary key or unique constraint on a partitioned table unless
+ * it contains every partition key column, because it cannot enforce uniqueness across
+ * partitions otherwise.
+ *
+ * Checking it here matters because uniqueness is what the join fan-out proof reads:
+ * accepting a constraint PostgreSQL itself would reject would make SQLSage assert a
+ * relation is unique when the real database could hold duplicates.
+ */
+function checkPartitionedUniqueness(table: MutableTable, key: PartitionKey | undefined): void {
+  if (!key || (key.columns.length === 0 && !key.hasExpression)) return;
+  for (const index of table.indexes) {
+    if (!index.unique) continue;
+    if (key.hasExpression) {
+      // PostgreSQL cannot match a unique constraint against an expression key, so it
+      // permits none at all. Accepting one would let SQLSage assert a uniqueness the
+      // real database never enforces.
+      fail(
+        `unique constraint ${index.name} is not allowed on ${table.name}, which is ` +
+        'partitioned by an expression',
+      );
+    }
+    const covered = index.columns.map((column) => column.toLowerCase());
+    const missing = key.columns.filter((column) => !covered.includes(column.toLowerCase()));
+    if (missing.length) {
+      fail(
+        `unique constraint ${index.name} on partitioned table ${table.name} must include ` +
+        `partition key column${missing.length === 1 ? '' : 's'} ${missing.join(', ')}`,
+      );
+    }
+  }
+}
+
 function createTable(statement: string, tokens: Token[], state: ParseState): void {
   let i = 2;
   if (keyword(tokens[i], 'if') && keyword(tokens[i + 1], 'not') && keyword(tokens[i + 2], 'exists')) i += 3;
@@ -564,25 +642,90 @@ function createTable(statement: string, tokens: Token[], state: ParseState): voi
   if (!qualified) fail('CREATE TABLE must name a table');
   const resolved = resolveTableName(qualified, state.currentSchema);
   i = qualified.next;
-  if (tokens[i]?.value !== '(') fail(`CREATE TABLE ${resolved.name} must use an explicit column list`);
-  const close = matchingParen(tokens, i);
-  if (close !== tokens.length - 1) fail(`CREATE TABLE ${resolved.name} has unsupported trailing options`);
   const identity = tableIdentity(resolved.schema, resolved.name);
   if (state.tables.has(identity)) fail(`table ${resolved.schema}.${resolved.name} is declared more than once`);
 
+  // `CREATE TABLE child PARTITION OF parent ...` has no column list of its own.
+  if (keyword(tokens[i], 'partition') && keyword(tokens[i + 1], 'of')) {
+    createPartitionOf(tokens, i + 2, resolved, identity, state);
+    return;
+  }
+
+  if (tokens[i]?.value !== '(') fail(`CREATE TABLE ${resolved.name} must use an explicit column list`);
+  const close = matchingParen(tokens, i);
+
+  let partitionKey: PartitionKey | undefined;
   const table: MutableTable = { schema: resolved.schema, name: resolved.name, columns: [], indexes: [] };
+  if (close !== tokens.length - 1) {
+    if (!keyword(tokens[close + 1], 'partition') || !keyword(tokens[close + 2], 'by')) {
+      fail(`CREATE TABLE ${resolved.name} has unsupported trailing options`);
+    }
+    partitionKey = parsePartitionBy(tokens, close + 1, tokens.length, table);
+  }
+
   for (const [start, end] of splitTopLevel(tokens, i + 1, close)) {
     const first = tokens[start];
     if (isTableConstraintStart(first)) parseTableConstraint(tokens, start, end, table);
     else parseColumn(statement, tokens, start, end, table);
   }
   if (!table.columns.length) fail(`table ${resolved.name} has no columns`);
-  state.tables.set(identity, table);
-  for (const index of table.indexes) {
-    const normalized = `${resolved.schema}.${index.name}`.toLowerCase();
-    if (state.indexes.has(normalized)) fail(`index ${index.name} is declared more than once`);
-    state.indexes.set(normalized, resolved.name);
+  for (const column of partitionKey?.columns ?? []) {
+    if (!table.columns.some((candidate) => candidate.name.toLowerCase() === column.toLowerCase())) {
+      fail(`PARTITION BY on ${resolved.name} references unknown column ${column}`);
+    }
   }
+  checkPartitionedUniqueness(table, partitionKey);
+
+  state.tables.set(identity, table);
+  if (partitionKey) state.partitionKeys.set(identity, partitionKey);
+  registerIndexes(state, resolved.schema, table);
+}
+
+/**
+ * A declarative partition is a queryable relation in its own right, so it becomes its
+ * own table with the parent's columns and primary key copied in — which is what
+ * PostgreSQL materialises on each partition.
+ *
+ * Note the asymmetry that makes this safe: a unique index declared on one partition is
+ * unique only within that partition. Modelling partitions as separate tables keeps that
+ * true, where merging them into the parent would over-claim uniqueness.
+ */
+function createPartitionOf(
+  tokens: Token[],
+  at: number,
+  resolved: { schema: string; name: string },
+  identity: string,
+  state: ParseState,
+): void {
+  const parentName = parseQualifiedName(tokens, at);
+  if (!parentName) fail(`PARTITION OF on ${resolved.name} must name a parent table`);
+  const parentResolved = resolveTableName(parentName, state.currentSchema);
+  const parent = state.tables.get(tableIdentity(parentResolved.schema, parentResolved.name));
+  if (!parent) {
+    fail(`${resolved.name} is declared PARTITION OF unknown table ${parentResolved.schema}.${parentResolved.name}; declare the parent first`);
+  }
+
+  const table: MutableTable = {
+    schema: resolved.schema,
+    name: resolved.name,
+    columns: parent.columns.map((column) => ({ ...column })),
+    indexes: [],
+  };
+  if (parent.primaryKey) {
+    table.primaryKey = [...parent.primaryKey];
+    table.indexes.push({
+      name: `${resolved.name}_pkey`,
+      table: resolved.name,
+      columns: [...parent.primaryKey],
+      unique: true,
+      method: 'btree',
+      expressions: [],
+    });
+  }
+  if (parent.foreignKeys) table.foreignKeys = parent.foreignKeys.map((key) => ({ ...key }));
+
+  state.tables.set(identity, table);
+  registerIndexes(state, resolved.schema, table);
 }
 
 function rawItem(statement: string, tokens: Token[], start: number, end: number): string {
@@ -690,6 +833,13 @@ function alterTableAction(statement: string, tokens: Token[], start: number, end
     fail(`ALTER TABLE ${table.name} has an unsupported ALTER COLUMN action on ${name}`);
   }
 
+  // pg_dump emits the partition as a standalone CREATE TABLE and then attaches it, so
+  // the child already exists as its own relation by the time this is reached. Only the
+  // parent/child link is skipped, and that link carries nothing the analysis reads.
+  if ((keyword(tokens[i], 'attach') || keyword(tokens[i], 'detach')) && keyword(tokens[i + 1], 'partition')) {
+    return;
+  }
+
   const action = tokens[start]?.raw ?? 'action';
   fail(`ALTER TABLE ${table.name} has unsupported action ${action}`);
 }
@@ -719,11 +869,8 @@ function alterTable(statement: string, tokens: Token[], state: ParseState): void
 
   // Indexes implied by newly added constraints join the same duplicate-name check
   // CREATE TABLE and CREATE INDEX use, so a name can only be claimed once per schema.
-  for (const index of table.indexes.slice(knownIndexes)) {
-    const normalized = `${resolved.schema}.${index.name}`.toLowerCase();
-    if (state.indexes.has(normalized)) fail(`index ${index.name} is declared more than once`);
-    state.indexes.set(normalized, resolved.name);
-  }
+  registerIndexes(state, resolved.schema, table, knownIndexes);
+  checkPartitionedUniqueness(table, state.partitionKeys.get(tableIdentity(resolved.schema, resolved.name)));
 }
 
 function createIndex(statement: string, tokens: Token[], state: ParseState): void {
@@ -879,7 +1026,7 @@ function finalize(state: ParseState): Catalog {
 /** Parse supported PostgreSQL DDL into SQLSage's offline catalog shape. */
 export function parseSchemaCatalog(sql: string): Catalog {
   if (typeof sql !== 'string' || !sql.trim()) fail('schema SQL is empty');
-  const state: ParseState = { currentSchema: 'public', tables: new Map(), indexes: new Map() };
+  const state: ParseState = { currentSchema: 'public', tables: new Map(), indexes: new Map(), partitionKeys: new Map() };
   const statements = splitStatements(sql);
   for (let position = 0; position < statements.length; position += 1) {
     const statement = statements[position]!;
