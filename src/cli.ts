@@ -8,12 +8,13 @@ import packageJson from '../package.json' with { type: 'json' };
 import { CORPUS } from '../corpus/queries.ts';
 import { CatalogInputError, loadCatalog, validateCatalog } from './catalog.ts';
 import { CliUsageError, parseCliArgs } from './cli-args.ts';
-import type { AnalyzeCliOptions, CliOptions, DemoCliOptions, DoctorCliOptions, OutputFormat, QuerySource } from './cli-args.ts';
+import type { AnalyzeCliOptions, CliOptions, CompareCliOptions, DemoCliOptions, DoctorCliOptions, OutputFormat, QuerySource } from './cli-args.ts';
 import { analyze } from './index.ts';
 import { bindQuery } from './ir/index.ts';
 import { collectLiveEvidence, LiveInputError } from './live.ts';
 import { applyPlanEvidence, loadPlanEvidence, normalizePlanEvidence, PlanInputError } from './plan-evidence.ts';
 import type { PlanEvidence } from './plan-evidence.ts';
+import { comparePlans, renderComparison } from './compare/index.ts';
 import { runDoctorChecks, renderDoctorReport } from './doctor.ts';
 import { buildModel, renderReport } from './report/index.ts';
 import { loadSchemaCatalog, SchemaInputError } from './schema.ts';
@@ -50,6 +51,9 @@ First steps:
   sqlsage demo                          analyze a bundled example; needs no files
   sqlsage doctor                        check the runtime and bundled assets
   sqlsage doctor --database-url <url>   also check connectivity and permissions
+
+Compare two captured plans:
+  sqlsage compare --before before.json --after after.json
 
 Bundled examples:
   sqlsage list
@@ -344,6 +348,15 @@ async function runDemo(options: DemoCliOptions, io: CliIo): Promise<number> {
   return 0;
 }
 
+function runCompare(options: CompareCliOptions, io: CliIo): number {
+  const comparison = comparePlans(loadPlanEvidence(options.beforePath), loadPlanEvidence(options.afterPath));
+  const format = options.format ?? (io.stdout.isTTY ? 'text' : 'markdown');
+  io.stdout.write(format === 'json'
+    ? `${JSON.stringify({ formatVersion: 1, product: 'sqlsage', command: 'compare', comparison }, null, 2)}\n`
+    : renderComparison(comparison, format === 'text' ? 'text' : 'markdown'));
+  return 0;
+}
+
 async function runDoctor(options: DoctorCliOptions, io: CliIo): Promise<number> {
   const results = await runDoctorChecks(options);
   io.stdout.write(renderDoctorReport(results));
@@ -363,6 +376,7 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
       return 0;
     }
     if (options.command === 'demo') return await runDemo(options, io);
+    if (options.command === 'compare') return runCompare(options, io);
     if (options.command === 'doctor') return await runDoctor(options, io);
     if (options.command === 'list') {
       for (const query of CORPUS) io.stdout.write(`${query.id.padEnd(32)} ${query.title}\n`);

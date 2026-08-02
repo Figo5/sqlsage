@@ -43,10 +43,20 @@ export interface DoctorCliOptions {
   color: boolean | undefined;
 }
 
+/** `compare` diffs two captured plans; it never runs a query itself. */
+export interface CompareCliOptions {
+  command: 'compare';
+  beforePath: string;
+  afterPath: string;
+  format?: OutputFormat;
+  color: boolean | undefined;
+}
+
 export type CliOptions =
   | AnalyzeCliOptions
   | DemoCliOptions
   | DoctorCliOptions
+  | CompareCliOptions
   | { command: 'help' }
   | { command: 'version' }
   | { command: 'list' };
@@ -61,6 +71,7 @@ export class CliUsageError extends Error {
 const VALUE_FLAGS = new Set([
   '--query', '-q', '--sql', '--catalog', '--schema', '--plan', '--database-url',
   '--schema-name', '--format', '-f', '--statement-timeout', '--corpus',
+  '--before', '--after',
 ]);
 
 function oneValue(values: Map<string, string>, canonical: string, aliases: string[] = []): string | undefined {
@@ -141,6 +152,33 @@ function parseDemo(args: string[]): DemoCliOptions {
   };
 }
 
+function parseCompare(args: string[]): CompareCliOptions {
+  const { values, switches, positionals } = scanArgs(args);
+  if (positionals.length) throw new CliUsageError(`compare takes no positional arguments; received ${JSON.stringify(positionals[0])}`);
+  const beforePath = oneValue(values, '--before');
+  const afterPath = oneValue(values, '--after');
+  if (!beforePath || !afterPath) {
+    throw new CliUsageError('compare needs both --before <plan> and --after <plan>');
+  }
+  const formatRaw = oneValue(values, '--format', ['-f']);
+  if (formatRaw !== undefined && !['text', 'markdown', 'json'].includes(formatRaw)) {
+    throw new CliUsageError(`--format must be text, markdown, or json; received ${JSON.stringify(formatRaw)}`);
+  }
+  for (const flag of ['--query', '-q', '--sql', '--corpus', '--database-url']) {
+    if (values.has(flag)) throw new CliUsageError(`compare does not take ${flag}; it diffs two captured plans`);
+  }
+  if (switches.has('--analyze')) {
+    throw new CliUsageError('compare never executes a query; capture each plan first, then compare the two files');
+  }
+  return {
+    command: 'compare',
+    beforePath,
+    afterPath,
+    format: formatRaw as OutputFormat | undefined,
+    color: switches.has('--no-color') ? false : undefined,
+  };
+}
+
 function parseDoctor(args: string[]): DoctorCliOptions {
   const { values, switches, positionals } = scanArgs(args);
   if (positionals.length) throw new CliUsageError(`doctor takes no positional arguments; received ${JSON.stringify(positionals[0])}`);
@@ -176,6 +214,11 @@ export function parseCliArgs(argv: string[], stdinIsTTY = true): CliOptions {
     const rest = args.slice(1);
     if (rest.includes('--help') || rest.includes('-h')) return { command: 'help' };
     return parseDemo(rest);
+  }
+  if (args[0] === 'compare') {
+    const rest = args.slice(1);
+    if (rest.includes('--help') || rest.includes('-h')) return { command: 'help' };
+    return parseCompare(rest);
   }
   if (args[0] === 'doctor') {
     const rest = args.slice(1);
