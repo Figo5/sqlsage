@@ -259,3 +259,51 @@ test('row misestimates are filtered, ranked by rows misjudged, and flagged when 
   } }]));
   assert.deepEqual(planOnly.execution.estimationRisks, []);
 });
+
+test('plan prose states where the evidence came from, not just whether it was analyzed', async () => {
+  const catalog = await loadCatalog(new URL('../corpus/catalog.json', import.meta.url).pathname);
+  const base = analyze('SELECT order_id FROM shop.orders', catalog).analysis;
+
+  const analyzed = [{
+    Plan: {
+      'Node Type': 'Seq Scan', 'Relation Name': 'orders',
+      'Plan Rows': 100, 'Actual Rows': 5000, 'Actual Loops': 1,
+      'Total Cost': 10, 'Actual Total Time': 12,
+    },
+    'Execution Time': 12,
+  }];
+  const planOnly = [{ Plan: { 'Node Type': 'Seq Scan', 'Relation Name': 'orders', 'Plan Rows': 100, 'Total Cost': 10 } }];
+
+  const proseOf = (input: unknown, source?: 'live' | 'saved') => {
+    const evidence = source === undefined
+      ? normalizePlanEvidence(input)
+      : normalizePlanEvidence(input, source);
+    const e = applyPlanEvidence(base, evidence).execution;
+    return [
+      ...e.accessPaths.map((p) => p.reason),
+      ...e.dominantCosts.map((c) => c.why),
+      ...e.estimationRisks.map((r) => r.why),
+      e.scalability.summary,
+    ].join('\n');
+  };
+
+  // Saying "saved" about a plan collected seconds ago by --analyze is untrue, and
+  // provenance is exactly what a reader weighs when deciding how far to trust it.
+  const liveAnalyzed = proseOf(analyzed, 'live');
+  assert.match(liveAnalyzed, /live EXPLAIN ANALYZE/);
+  assert.doesNotMatch(liveAnalyzed, /saved/);
+
+  assert.match(proseOf(planOnly, 'live'), /live plan-only EXPLAIN/);
+  assert.match(proseOf(analyzed, 'saved'), /saved EXPLAIN ANALYZE/);
+  assert.match(proseOf(planOnly, 'saved'), /saved plan-only EXPLAIN/);
+
+  // Absent source defaults to saved, so bundles written before this field keep
+  // reading true rather than silently claiming to be live.
+  const defaulted = proseOf(analyzed);
+  assert.match(defaulted, /saved EXPLAIN ANALYZE/);
+  assert.doesNotMatch(defaulted, /\blive\b/);
+
+  // A plan file on disk is a saved plan however it was originally captured.
+  assert.equal(normalizePlanEvidence(analyzed, 'live').source, 'live');
+  assert.equal(normalizePlanEvidence(JSON.stringify(analyzed)).source, 'saved');
+});

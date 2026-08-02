@@ -185,6 +185,13 @@ Accepts raw `EXPLAIN (FORMAT JSON)` output and SQLSage evidence bundles. A bundl
 SQL must match the query being analyzed; mismatched evidence is rejected rather than
 silently trusted. Validate one with `sqlsage doctor --plan plan.json`.
 
+### Where a plan came from
+
+Every plan-derived statement names its own provenance — `live` or `saved`, crossed with
+`EXPLAIN ANALYZE` or `plan-only EXPLAIN` — because how far to trust a measurement depends
+on both. A plan captured live and written to an evidence bundle reads back as *saved*,
+which is what it then is.
+
 ### Estimated versus actual rows
 
 A plan captured with `EXPLAIN ANALYZE` (via `--analyze` or a saved analyzed plan) carries

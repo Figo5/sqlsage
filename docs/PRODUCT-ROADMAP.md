@@ -170,6 +170,11 @@ PostgreSQL recommends machine-readable plan formats for programmatic analysis an
 warns that `EXPLAIN ANALYZE` actually executes the query. SQLSage should retain those
 distinctions as core trust boundaries.
 
+Plan-derived prose states its provenance: `live` or `saved`, crossed with
+`EXPLAIN ANALYZE` or `plan-only EXPLAIN`. Provenance is not persisted into an evidence
+bundle, because a plan captured live and written to a file is genuinely a saved plan when
+it is read back.
+
 Reference: <https://www.postgresql.org/docs/current/using-explain.html>
 
 ### User acquisition

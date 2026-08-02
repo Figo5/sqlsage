@@ -177,7 +177,7 @@ async function runAnalysis(options: AnalyzeCliOptions, io: CliIo): Promise<numbe
         analyze: options.runAnalyze,
         statementTimeoutMs: options.statementTimeoutMs,
       });
-      const plan = normalizePlanEvidence(live.planJson);
+      const plan = normalizePlanEvidence(live.planJson, 'live');
       result = withPlan(analyze(sql, live.catalog), plan);
       context = {
         mode: options.runAnalyze ? 'connected-analyze' : 'connected-plan',
