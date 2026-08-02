@@ -546,6 +546,91 @@ function rawItem(statement: string, tokens: Token[], start: number, end: number)
   return tokensText(statement, tokens, start, end).replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * One `ALTER TABLE` action. Constraint actions delegate to the same
+ * `parseTableConstraint` used inside `CREATE TABLE`, so `ADD CONSTRAINT u UNIQUE (k)`
+ * and an inline `UNIQUE (k)` cannot drift apart or disagree about naming.
+ */
+function alterTableAction(statement: string, tokens: Token[], start: number, end: number, table: MutableTable): void {
+  let i = start;
+
+  if (keyword(tokens[i], 'add')) {
+    i += 1;
+    if (keyword(tokens[i], 'column')) {
+      i += 1;
+      if (keyword(tokens[i], 'if') && keyword(tokens[i + 1], 'not') && keyword(tokens[i + 2], 'exists')) i += 3;
+      parseColumn(statement, tokens, i, end, table);
+      return;
+    }
+    const isConstraint = keyword(tokens[i], 'constraint') || keyword(tokens[i], 'primary')
+      || keyword(tokens[i], 'foreign') || keyword(tokens[i], 'unique') || keyword(tokens[i], 'check');
+    // `ADD COLUMN` may omit the COLUMN keyword; anything not constraint-shaped is a column.
+    if (isConstraint) parseTableConstraint(tokens, i, end, table);
+    else parseColumn(statement, tokens, i, end, table);
+    return;
+  }
+
+  if (keyword(tokens[i], 'alter')) {
+    i += 1;
+    if (keyword(tokens[i], 'column')) i += 1;
+    const name = identifier(tokens[i]);
+    if (name === undefined) fail(`ALTER TABLE ${table.name} has an invalid ALTER COLUMN action`);
+    const column = table.columns.find((candidate) => candidate.name.toLowerCase() === name.toLowerCase());
+    if (!column) fail(`ALTER TABLE ${table.name} alters unknown column ${name}`);
+    i += 1;
+    if (keyword(tokens[i], 'set') && keyword(tokens[i + 1], 'not') && keyword(tokens[i + 2], 'null') && i + 3 === end) {
+      column.nullable = false;
+      return;
+    }
+    if (keyword(tokens[i], 'drop') && keyword(tokens[i + 1], 'not') && keyword(tokens[i + 2], 'null') && i + 3 === end) {
+      // A column reachable by the primary key cannot become nullable.
+      if (table.primaryKey?.some((key) => key.toLowerCase() === name.toLowerCase())) {
+        fail(`ALTER TABLE ${table.name} cannot drop NOT NULL from primary key column ${name}`);
+      }
+      column.nullable = true;
+      return;
+    }
+    // SET DEFAULT, TYPE changes and statistics targets do not affect the analysis,
+    // but accepting them silently would imply we modelled them. Reject instead.
+    fail(`ALTER TABLE ${table.name} has an unsupported ALTER COLUMN action on ${name}`);
+  }
+
+  const action = tokens[start]?.raw ?? 'action';
+  fail(`ALTER TABLE ${table.name} has unsupported action ${action}`);
+}
+
+/**
+ * `ALTER TABLE` is applied to a table already declared in this file. Statement order
+ * therefore matters, exactly as it does for PostgreSQL itself.
+ */
+function alterTable(statement: string, tokens: Token[], state: ParseState): void {
+  let i = 2;
+  if (keyword(tokens[i], 'if') && keyword(tokens[i + 1], 'exists')) i += 2;
+  if (keyword(tokens[i], 'only')) i += 1;
+  const qualified = parseQualifiedName(tokens, i);
+  if (!qualified) fail('ALTER TABLE must name a table');
+  const resolved = resolveTableName(qualified, state.currentSchema);
+  const table = state.tables.get(tableIdentity(resolved.schema, resolved.name));
+  if (!table) {
+    fail(`ALTER TABLE refers to unknown table ${resolved.schema}.${resolved.name}; declare it with CREATE TABLE first`);
+  }
+  i = qualified.next;
+  if (i >= tokens.length) fail(`ALTER TABLE ${resolved.name} has no action`);
+
+  const knownIndexes = table.indexes.length;
+  for (const [start, end] of splitTopLevel(tokens, i, tokens.length)) {
+    alterTableAction(statement, tokens, start, end, table);
+  }
+
+  // Indexes implied by newly added constraints join the same duplicate-name check
+  // CREATE TABLE and CREATE INDEX use, so a name can only be claimed once per schema.
+  for (const index of table.indexes.slice(knownIndexes)) {
+    const normalized = `${resolved.schema}.${index.name}`.toLowerCase();
+    if (state.indexes.has(normalized)) fail(`index ${index.name} is declared more than once`);
+    state.indexes.set(normalized, resolved.name);
+  }
+}
+
 function createIndex(statement: string, tokens: Token[], state: ParseState): void {
   let i = 1;
   let unique = false;
@@ -713,6 +798,8 @@ export function parseSchemaCatalog(sql: string): Catalog {
       else if (keyword(tokens[0], 'create') && keyword(tokens[1], 'table')) createTable(statement, tokens, state);
       else if (keyword(tokens[0], 'create') && (keyword(tokens[1], 'index') || keyword(tokens[1], 'unique'))) {
         createIndex(statement, tokens, state);
+      } else if (keyword(tokens[0], 'alter') && keyword(tokens[1], 'table')) {
+        alterTable(statement, tokens, state);
       } else {
         const description = tokens.slice(0, 3).map((token) => token.raw).join(' ');
         statementFail(number, `unsupported statement ${description || '(empty)'}`);

@@ -117,10 +117,13 @@ test('safely ignores comments and DROP SCHEMA', () => {
 });
 
 test('rejects unsupported DDL rather than returning a partial catalog', () => {
+  // This case used to assert that ALTER TABLE was rejected outright. ALTER TABLE is
+  // now supported, so the assertion was replaced with DDL that is still unsupported
+  // rather than deleted -- the point of the test is that unknown DDL fails loudly.
   assert.throws(
-    () => parseSchemaCatalog('CREATE TABLE t (id int); ALTER TABLE t ADD PRIMARY KEY (id);'),
+    () => parseSchemaCatalog('CREATE TABLE t (id int); CREATE VIEW v AS SELECT id FROM t;'),
     (error: unknown) => error instanceof SchemaInputError
-      && /statement 2: unsupported statement ALTER TABLE t/.test(error.message),
+      && /statement 2: unsupported statement CREATE VIEW v/.test(error.message),
   );
   assert.throws(
     () => parseSchemaCatalog('CREATE TABLE t (id int CHECK (id > 0));'),
@@ -183,6 +186,55 @@ test('malformed UNIQUE constraints are rejected rather than half-understood', ()
     // NULLS NOT DISTINCT changes the semantics we would be asserting, so it is
     // refused rather than parsed into a plain unique index.
     ['CREATE SCHEMA s; CREATE TABLE s.t (id bigint PRIMARY KEY, e text, UNIQUE (e) NULLS NOT DISTINCT);', /unsupported trailing options/],
+  ];
+  for (const [ddl, expected] of cases) {
+    assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
+      assert.match(error.message, expected);
+      return true;
+    }, ddl);
+  }
+});
+
+test('ALTER TABLE adds constraints and columns to an already-declared table', () => {
+  const catalog = parseSchemaCatalog(`
+    CREATE SCHEMA s;
+    CREATE TABLE s.a (id bigint PRIMARY KEY, code text);
+    CREATE TABLE s.b (id bigint PRIMARY KEY, code text, aid bigint, note text);
+    ALTER TABLE s.b ADD CONSTRAINT b_code_uq UNIQUE (code);
+    ALTER TABLE s.b ADD CONSTRAINT b_a_fk FOREIGN KEY (aid) REFERENCES s.a (id);
+    ALTER TABLE ONLY s.b ADD COLUMN extra text NOT NULL, ALTER COLUMN note SET NOT NULL;
+  `);
+  const b = catalog.tables.find((table) => table.name === 'b')!;
+
+  // Constraint actions reuse parseTableConstraint, so ADD CONSTRAINT ... UNIQUE and an
+  // inline UNIQUE cannot drift apart or disagree about the generated index name.
+  assert.deepEqual(b.indexes.map((index) => index.name), ['b_pkey', 'b_code_uq']);
+  assert.equal(b.indexes.find((index) => index.name === 'b_code_uq')!.unique, true);
+  assert.deepEqual(b.foreignKeys, [
+    { columns: ['aid'], referencesTable: 'a', referencesColumns: ['id'] },
+  ]);
+
+  const nullable = Object.fromEntries(b.columns.map((column) => [column.name, column.nullable]));
+  assert.equal(nullable.extra, false);
+  assert.equal(nullable.note, false);   // SET NOT NULL applied
+  assert.equal(nullable.code, true);    // UNIQUE alone must not imply NOT NULL
+});
+
+test('ALTER TABLE refuses actions it does not model instead of ignoring them', () => {
+  const base = 'CREATE SCHEMA s; CREATE TABLE s.t (id bigint PRIMARY KEY, k bigint, v text);';
+  const cases: [string, RegExp][] = [
+    // Order matters, exactly as it does for PostgreSQL.
+    [`${base} ALTER TABLE s.zzz ADD UNIQUE (k);`, /unknown table s\.zzz/],
+    [`${base} ALTER TABLE s.t ADD CONSTRAINT c CHECK (k > 0);`, /unsupported table constraint CHECK/],
+    [`${base} ALTER TABLE s.t DROP COLUMN v;`, /unsupported action DROP/],
+    // Silently accepting these would imply we modelled them.
+    [`${base} ALTER TABLE s.t ALTER COLUMN v SET DEFAULT 'x';`, /unsupported ALTER COLUMN action on v/],
+    [`${base} ALTER TABLE s.t ADD PRIMARY KEY (k);`, /declares more than one primary key/],
+    [`${base} ALTER TABLE s.t ADD COLUMN v text;`, /declares column v more than once/],
+    [`${base} ALTER TABLE s.t ADD CONSTRAINT t_pkey UNIQUE (k);`, /index t_pkey is declared more than once/],
+    // A primary key column cannot become nullable.
+    [`${base} ALTER TABLE s.t ALTER COLUMN id DROP NOT NULL;`, /cannot drop NOT NULL from primary key column id/],
+    [`${base} ALTER TABLE s.t;`, /has no action/],
   ];
   for (const [ddl, expected] of cases) {
     assert.throws(() => parseSchemaCatalog(ddl), (error: SchemaInputError) => {
