@@ -17,7 +17,7 @@ SQLSage can run completely offline. A database connection is optional.
 
 ## Download and install
 
-Requirements: Node.js 24 or newer and npm.
+Requirements: Node.js 22.18 or newer (Node 22 LTS and Node 24 are both tested in CI) and npm.
 
 Download the current package from the
 [v0.1.0 release](https://github.com/Figo5/sqlsage/releases/tag/v0.1.0), then install it:
@@ -38,16 +38,38 @@ installation.
 
 ## Try it in 30 seconds
 
-SQLSage includes a demonstration catalog and twelve realistic queries:
+One command, no files and no database:
+
+```bash
+sqlsage demo
+```
+
+It analyzes a bundled query with a nullable `NOT IN` correctness bug: SQLSage explains
+why the query can return no rows, proposes a `NOT EXISTS` repair, labels the intentional
+result change, and then prints the commands for analyzing your own query.
+
+SQLSage also includes a demonstration catalog and twelve realistic queries:
 
 ```bash
 sqlsage list
 sqlsage analyze --corpus q05 --format text
 ```
 
-The q05 example demonstrates a nullable `NOT IN` correctness bug. SQLSage explains
-why it can return no rows, proposes a `NOT EXISTS` repair, and labels the intentional
-result change.
+## Check your environment
+
+`sqlsage doctor` validates the runtime, any input files you pass, and — if you supply a
+connection string — database connectivity and permissions. Every failure prints the exact
+command that fixes it.
+
+```bash
+sqlsage doctor
+sqlsage doctor --catalog catalog.json --schema schema.sql
+sqlsage doctor --database-url "$DATABASE_URL" --schema-name public
+```
+
+It is strictly read-only: it never issues DDL or DML, never runs `EXPLAIN ANALYZE`, and
+never executes your query. It exits 0 when every check passes and 1 when any check fails,
+so it is safe to use as a CI preflight step.
 
 ## Analyze your own query
 
