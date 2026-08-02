@@ -23,6 +23,13 @@ const DDL: [string, string][] = [
   ['GIN index', `${BASE}CREATE INDEX i ON shop.t USING gin (v);`],
   ['CREATE VIEW', `${BASE}CREATE VIEW shop.vw AS SELECT id FROM shop.t;`],
   ['CREATE MATERIALIZED VIEW', `${BASE}CREATE MATERIALIZED VIEW shop.mv AS SELECT id FROM shop.t;`],
+  ['pg_dump preamble (SET/SELECT set_config)', `SET statement_timeout = 0;\nSELECT pg_catalog.set_config('search_path','',false);\n${BASE}`],
+  ['ownership, GRANT, COMMENT', `${BASE}ALTER TABLE shop.t OWNER TO postgres;\nGRANT SELECT ON TABLE shop.t TO r;\nCOMMENT ON TABLE shop.t IS 'x';`],
+  ['CREATE SEQUENCE / EXTENSION / TYPE', `CREATE EXTENSION pg_trgm;\nCREATE SCHEMA shop;\nCREATE TYPE shop.st AS ENUM ('a');\nCREATE SEQUENCE shop.s;\nCREATE TABLE shop.t (id bigint PRIMARY KEY);`],
+  ['CREATE FUNCTION with $$ body', `${BASE}CREATE FUNCTION shop.f() RETURNS int AS $$ SELECT 1; $$ LANGUAGE sql;`],
+  ['identity column', `CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint GENERATED ALWAYS AS IDENTITY, v text);`],
+  ['generated stored column', `CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint PRIMARY KEY, a text, b text GENERATED ALWAYS AS (a) STORED);`],
+  ['EXCLUDE constraint (must reject)', `CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint PRIMARY KEY, EXCLUDE USING gist (id WITH =));`],
 ];
 console.log('## Schema DDL');
 for (const [name, sql] of DDL) {

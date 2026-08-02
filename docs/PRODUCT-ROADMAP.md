@@ -1,6 +1,6 @@
 # SQLSage Product Roadmap
 
-Last updated: 2026-08-01 (Phase 1: demo, doctor, and release automation landed)
+Last updated: 2026-08-01 (Phase 1 demo/doctor/release automation and Node 22; Phase 2 schema-parser work)
 
 ## Purpose
 
@@ -70,7 +70,7 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
   OIDC (`id-token: write`), stores no npm token, verifies the tag matches
   `package.json`, and skips publishing a version already on the registry.
 - Investigate supporting Node.js 22 as well as Node.js 24. **Done — Node 22 is
-  supported.** Verified on Node 22.23.2 in a clean container: the full suite (150 tests),
+  supported.** Verified on Node 22.23.2 in a clean container: the full suite,
   `eval/dump-ir.ts --check` (406 assertions), `eval/run.ts` (12/12), the build, and the
   install smoke test all pass, as do `demo`, `doctor`, and every analyze path. Native
   type stripping works from Node 22.18, which is why the floor is `>=22.18.0` rather
@@ -127,12 +127,18 @@ Goal: prove that SQLSage's advice is dependable, not merely convincing-looking.
   - unique constraints — **done.** Column, table, composite, and named `UNIQUE` inside
     `CREATE TABLE` all become unique indexes and feed the join fan-out proof. `UNIQUE`
     correctly does not imply `NOT NULL`. All spellings including `ALTER TABLE ... ADD CONSTRAINT`;
-  - generated and identity columns — not supported;
-  - `CHECK` constraints — not supported;
+  - generated and identity columns — **done.** Identity implies NOT NULL; a stored
+    generated column is an ordinary nullable column;
+  - `CHECK` constraints — **accepted, predicate not modelled.** A CHECK cannot change
+    the column set, keys, indexes or nullability, so skipping it costs nothing;
   - partitioned tables (`PARTITION BY`) — not supported;
   - views and materialized views — not supported; and
   - **multi-schema references — already supported**, including cross-schema foreign keys.
     Measured, correcting an earlier assumption in this document.
+- Accept real `pg_dump --schema-only` output. **Done.** Dump preamble, ownership, grants,
+  comments, sequences, extensions, enum types, and routines with dollar-quoted bodies are
+  skipped; everything outside that allowlist still fails loudly. Fixed a latent bug where
+  an `EXCLUDE` constraint fell through to the column parser and produced a phantom column.
 - Support query parameters such as `$1`, `$2`, and typed placeholders. Measured: these
   already **bind** without error, so a report is produced — but a placeholder carries no
   value, so selectivity and index advice fall back to defaults. The gap is advice quality,

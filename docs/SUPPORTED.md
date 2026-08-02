@@ -54,8 +54,8 @@ literal generally yields better advice. Improving this is on the roadmap.
 | Non-btree access methods (`USING gin`, etc.) | supported |
 | `ALTER TABLE` (ADD CONSTRAINT / ADD COLUMN / ALTER COLUMN SET-DROP NOT NULL) | supported |
 | `UNIQUE` as a column or table constraint | supported |
-| `CHECK` constraints | **not supported** |
-| Generated and identity columns (`GENERATED ...`) | **not supported** |
+| `CHECK` constraints | accepted; predicate not modelled |
+| Generated and identity columns (`GENERATED ...`) | supported |
 | Partitioned tables (`PARTITION BY`) | **not supported** |
 | `CREATE VIEW`, `CREATE MATERIALIZED VIEW` | **not supported** |
 
@@ -110,6 +110,27 @@ statement order matters exactly as it does for PostgreSQL.
 Actions that do not affect the analysis are **rejected rather than ignored**, because
 accepting them silently would imply SQLSage modelled them: `DROP COLUMN`,
 `DROP CONSTRAINT`, `SET DEFAULT`, type changes, and `ADD CHECK`.
+
+### Real `pg_dump --schema-only` output
+
+A dump parses directly. Statements carrying nothing the analysis reads are skipped:
+`SET` parameters other than `search_path`, `SELECT pg_catalog.set_config(...)`,
+`ALTER ... OWNER TO`, `GRANT`/`REVOKE`, `COMMENT ON`, sequences, extensions, types
+(including enums), and functions, procedures and triggers — dollar-quoted bodies and all.
+
+An enum-typed column keeps its type name as an opaque string, which is all the analysis
+uses.
+
+`CHECK` constraints are accepted but their predicates are **not modelled**. A CHECK cannot
+change the column set, keys, indexes or nullability, so skipping it costs nothing.
+
+`GENERATED ALWAYS AS IDENTITY` implies `NOT NULL`; `GENERATED ALWAYS AS (expr) STORED` is
+an ordinary nullable column whose value happens to be computed.
+
+**Skipping is an allowlist, not a catch-all.** Anything not named above still fails
+loudly. A parser that quietly ignored what it did not understand would hand back a catalog
+silently missing keys or indexes, and every downstream claim about uniqueness, nullability
+and join fan-out would inherit that gap.
 
 ## Plan inputs (`--plan`)
 

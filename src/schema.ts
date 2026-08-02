@@ -123,8 +123,17 @@ function splitStatements(sql: string): string[] {
       continue;
     }
     if (char === '$') {
+      // Dollar-quoted bodies (function and procedure sources) contain semicolons.
+      // Consume to the matching tag so statement splitting stays correct; the
+      // statement itself is then ignored as carrying no schema information.
       const tag = sql.slice(i).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/)?.[0];
-      if (tag) fail('schema contains dollar-quoted SQL, which the offline importer does not support');
+      if (tag) {
+        const close = sql.indexOf(tag, i + tag.length);
+        if (close === -1) fail(`schema contains an unterminated dollar-quoted string opened with ${tag}`);
+        current += ' ';
+        i = close + tag.length - 1;
+        continue;
+      }
     }
     if (char === ';') {
       if (current.trim()) statements.push(current.trim());
@@ -454,6 +463,36 @@ function parseColumn(statement: string, tokens: Token[], start: number, end: num
       addUniqueConstraint(table, [name], pendingConstraintName);
       pendingConstraintName = undefined;
       i += 1;
+    } else if (keyword(tokens[i], 'check')) {
+      // The predicate is accepted but not modelled. A CHECK cannot change the column
+      // set, keys, indexes or nullability, which are the only things the analysis
+      // reads, so skipping it loses nothing while letting a real dump through.
+      if (tokens[i + 1]?.value !== '(') fail(`column ${table.name}.${name} has CHECK without a condition`);
+      i = matchingParen(tokens, i + 1, end) + 1;
+      pendingConstraintName = undefined;
+    } else if (keyword(tokens[i], 'generated')) {
+      // GENERATED ... AS IDENTITY is implicitly NOT NULL; GENERATED ... AS (expr)
+      // STORED is an ordinary nullable column whose value happens to be computed.
+      let j = i + 1;
+      if (keyword(tokens[j], 'always')) j += 1;
+      else if (keyword(tokens[j], 'by') && keyword(tokens[j + 1], 'default')) j += 2;
+      else fail(`column ${table.name}.${name} has GENERATED without ALWAYS or BY DEFAULT`);
+      if (!keyword(tokens[j], 'as')) fail(`column ${table.name}.${name} has GENERATED without AS`);
+      j += 1;
+      if (keyword(tokens[j], 'identity')) {
+        column.nullable = false;
+        j += 1;
+        // Optional sequence options: IDENTITY ( START WITH 1 ... )
+        if (tokens[j]?.value === '(') j = matchingParen(tokens, j, end) + 1;
+      } else if (tokens[j]?.value === '(') {
+        j = matchingParen(tokens, j, end) + 1;
+        if (!keyword(tokens[j], 'stored')) fail(`column ${table.name}.${name} has a generated expression without STORED`);
+        j += 1;
+      } else {
+        fail(`column ${table.name}.${name} has an unsupported GENERATED form`);
+      }
+      pendingConstraintName = undefined;
+      i = j;
     } else if (keyword(tokens[i], 'references')) {
       const reference = parseReference(tokens, i + 1, end);
       table.foreignKeys ??= [];
@@ -508,6 +547,12 @@ function parseTableConstraint(tokens: Token[], start: number, end: number, table
     table.foreignKeys.push({ columns, referencesTable: reference.table, referencesColumns: reference.columns });
     return;
   }
+  if (keyword(tokens[i], 'check')) {
+    // Accepted but not modelled -- see the column-level CHECK note.
+    if (tokens[i + 1]?.value !== '(') fail(`CHECK on ${table.name} must contain a condition`);
+    if (matchingParen(tokens, i + 1, end) + 1 !== end) fail(`CHECK on ${table.name} has unsupported trailing options`);
+    return;
+  }
   const construct = tokens[i]?.raw ?? 'constraint';
   fail(`table ${table.name} uses unsupported table constraint ${construct}`);
 }
@@ -528,9 +573,7 @@ function createTable(statement: string, tokens: Token[], state: ParseState): voi
   const table: MutableTable = { schema: resolved.schema, name: resolved.name, columns: [], indexes: [] };
   for (const [start, end] of splitTopLevel(tokens, i + 1, close)) {
     const first = tokens[start];
-    const isConstraint = keyword(first, 'constraint') || keyword(first, 'primary')
-      || keyword(first, 'foreign') || keyword(first, 'unique') || keyword(first, 'check');
-    if (isConstraint) parseTableConstraint(tokens, start, end, table);
+    if (isTableConstraintStart(first)) parseTableConstraint(tokens, start, end, table);
     else parseColumn(statement, tokens, start, end, table);
   }
   if (!table.columns.length) fail(`table ${resolved.name} has no columns`);
@@ -547,10 +590,64 @@ function rawItem(statement: string, tokens: Token[], start: number, end: number)
 }
 
 /**
+ * Statements a `pg_dump --schema-only` file contains that carry nothing the analysis
+ * reads. Skipping them is what lets a real dump be used directly.
+ *
+ * This is deliberately an **allowlist**, not a catch-all. Anything not named here still
+ * fails loudly, because a parser that quietly ignores what it does not understand would
+ * hand back a catalog that is silently missing keys or indexes — and every downstream
+ * claim about uniqueness, nullability and fan-out would inherit that gap.
+ *
+ * Returns the reason it is ignorable, or undefined when the statement must be parsed.
+ */
+function ignorableStatement(tokens: Token[]): string | undefined {
+  const at = (n: number) => tokens[n]?.value?.toLowerCase();
+  const first = at(0);
+  const second = at(1);
+
+  // Ownership, permissions and comments never change the shape of the data.
+  if (first === 'grant' || first === 'revoke') return 'permissions';
+  if (first === 'comment' && second === 'on') return 'comment';
+  if (first === 'alter' && second === 'default' && at(2) === 'privileges') return 'permissions';
+  if (first === 'alter' && tokens.some((token) => token.value?.toLowerCase() === 'owner')) return 'ownership';
+
+  // Sequences are reachable only through column defaults, which are already ignored.
+  if ((first === 'create' || first === 'alter' || first === 'drop') && second === 'sequence') return 'sequence';
+
+  // Extensions, types (including enums) and routines: a column typed by one of these
+  // keeps the type name as an opaque string, which is all the analysis uses.
+  if ((first === 'create' || first === 'drop') && second === 'extension') return 'extension';
+  if ((first === 'create' || first === 'drop' || first === 'alter') && second === 'type') return 'type';
+  if (first === 'create' && (second === 'function' || second === 'procedure' || second === 'trigger')) return 'routine';
+  if (first === 'create' && second === 'or' && at(2) === 'replace') return 'routine';
+
+  // `SELECT pg_catalog.set_config(...)` appears in the dump preamble.
+  if (first === 'select') return 'session setup';
+
+  return undefined;
+}
+
+/**
  * One `ALTER TABLE` action. Constraint actions delegate to the same
  * `parseTableConstraint` used inside `CREATE TABLE`, so `ADD CONSTRAINT u UNIQUE (k)`
  * and an inline `UNIQUE (k)` cannot drift apart or disagree about naming.
  */
+/**
+ * Whether a CREATE TABLE element or ALTER TABLE ADD action is a table constraint
+ * rather than a column definition.
+ *
+ * EXCLUDE and LIKE are listed even though neither is supported: without them the
+ * element falls through to the column parser, which happily produced a phantom column
+ * named "exclude" with data type "using gist(id with =)". Fail-closed only holds if
+ * every constraint keyword is recognised here, so this list is shared by both call
+ * sites rather than written out twice.
+ */
+function isTableConstraintStart(token: Token | undefined): boolean {
+  return keyword(token, 'constraint') || keyword(token, 'primary') || keyword(token, 'foreign')
+    || keyword(token, 'unique') || keyword(token, 'check') || keyword(token, 'exclude')
+    || keyword(token, 'like');
+}
+
 function alterTableAction(statement: string, tokens: Token[], start: number, end: number, table: MutableTable): void {
   let i = start;
 
@@ -562,10 +659,8 @@ function alterTableAction(statement: string, tokens: Token[], start: number, end
       parseColumn(statement, tokens, i, end, table);
       return;
     }
-    const isConstraint = keyword(tokens[i], 'constraint') || keyword(tokens[i], 'primary')
-      || keyword(tokens[i], 'foreign') || keyword(tokens[i], 'unique') || keyword(tokens[i], 'check');
     // `ADD COLUMN` may omit the COLUMN keyword; anything not constraint-shaped is a column.
-    if (isConstraint) parseTableConstraint(tokens, i, end, table);
+    if (isTableConstraintStart(tokens[i])) parseTableConstraint(tokens, i, end, table);
     else parseColumn(statement, tokens, i, end, table);
     return;
   }
@@ -721,7 +816,9 @@ function dropSchema(tokens: Token[]): void {
 }
 
 function setSearchPath(tokens: Token[], state: ParseState): void {
-  if (!keyword(tokens[1], 'search_path')) fail(`unsupported SET parameter ${tokens[1]?.raw ?? ''}`);
+  // Dumps open with SET statement_timeout, default_table_access_method and friends.
+  // Only search_path changes how names resolve, so every other parameter is skipped.
+  if (!keyword(tokens[1], 'search_path')) return;
   if (!keyword(tokens[2], 'to') && tokens[2]?.value !== '=') fail('SET search_path must use TO or =');
   const schemas: string[] = [];
   for (const [start, end] of splitTopLevel(tokens, 3, tokens.length)) {
@@ -789,6 +886,7 @@ export function parseSchemaCatalog(sql: string): Catalog {
     const tokens = tokenize(statement);
     const number = position + 1;
     try {
+      if (ignorableStatement(tokens)) continue;
       if (keyword(tokens[0], 'drop') && keyword(tokens[1], 'schema')) {
         dropSchema(tokens);
         continue;
