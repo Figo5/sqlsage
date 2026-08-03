@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const CLI = new URL('./cli.ts', import.meta.url).pathname;
+const packageVersion = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url).pathname, 'utf8'),
+).version as string;
 const CATALOG = new URL('../corpus/catalog.json', import.meta.url).pathname;
 const SCHEMA = new URL('../corpus/schema.sql', import.meta.url).pathname;
 const Q01_PLAN = new URL('../groundtruth/q01-nonsargable-date.json', import.meta.url).pathname;
@@ -28,9 +31,13 @@ test('process CLI exposes help/version without loading a query', () => {
   assert.match(help.stdout, /external\s+side effects.*volatile function/is);
   assert.equal(help.stderr, '');
 
+  // Asserted against package.json rather than a literal: the point is that the CLI
+  // reports the version it was built from, and a hardcoded one has to be edited on
+  // every release, which makes it a chore rather than a check.
   const version = run(['--version']);
   assert.equal(version.status, 0);
-  assert.match(version.stdout, /^0\.1\.0\s*$/);
+  assert.equal(version.stdout.trim(), packageVersion);
+  assert.match(version.stdout, /^\d+\.\d+\.\d+/);
 });
 
 test('ordinary usage and file errors are concise and never leak a stack trace', () => {
