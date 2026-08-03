@@ -25,7 +25,8 @@ Current capabilities include:
 - `sqlsage demo` and `sqlsage doctor` for first-run success and environment validation.
 
 Published on npm: `npm install --global sqlsage`, or `npx sqlsage demo`.
-Releases: <https://www.npmjs.com/package/sqlsage>
+Releases: <https://www.npmjs.com/package/sqlsage>. Releasing is tag-driven through npm
+trusted publishing; see [Releasing](RELEASING.md).
 
 Repository: <https://github.com/Figo5/sqlsage>
 
@@ -65,9 +66,13 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
   sqlsage demo` produces a full report. 0.1.0 carries no provenance because a manual
   publish cannot: that requires OIDC from CI, so every release after it gets one.
 - Use npm trusted publishing through GitHub Actions to avoid long-lived publishing
-  tokens and produce build provenance. **Done** — `.github/workflows/release.yml` uses
-  OIDC (`id-token: write`), stores no npm token, verifies the tag matches
-  `package.json`, and skips publishing a version already on the registry.
+  tokens and produce build provenance. **Done and configured 2026-08-02.**
+  `.github/workflows/release.yml` uses OIDC (`id-token: write`), stores no npm token,
+  verifies the tag matches `package.json`, and skips publishing a version already on the
+  registry. The trusted publisher is attached on npm, so releasing is now entirely
+  tag-driven: bump the version, tag `vX.Y.Z`, push. The first tagged release will be the
+  first to carry a provenance attestation, which is also what proves the OIDC path end to
+  end — it has not yet run.
 - Investigate supporting Node.js 22 as well as Node.js 24. **Done — Node 22 is
   supported.** Verified on Node 22.23.2 in a clean container: the full suite,
   `eval/dump-ir.ts --check` (406 assertions), `eval/run.ts` (12/12), the build, and the

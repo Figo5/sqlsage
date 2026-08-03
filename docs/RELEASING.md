@@ -9,15 +9,17 @@ Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 
 ## One-time setup (maintainer, on npmjs.com)
 
-These steps cannot be automated from this repository — they are account-level actions on
-npm.
+**Both steps are complete.** They are kept here because they cannot be automated from
+this repository — they are account-level actions on npm — and would need repeating if the
+package ever moved accounts.
 
 1. ~~**Claim the package name with a first manual publish.**~~ **Done** — `sqlsage@0.1.0`
    was published manually on 2026-08-02, which is what made the package exist so a
    trusted publisher could be attached. That version carries no provenance, because a
    manual publish cannot produce one; everything released through the workflow does.
 
-2. **Configure the trusted publisher.** On npmjs.com go to the `sqlsage` package →
+2. ~~**Configure the trusted publisher.**~~ **Done 2026-08-02.** For reference, or if the
+   package is ever transferred: on npmjs.com go to the `sqlsage` package →
    *Settings* → *Trusted publisher*, choose **GitHub Actions**, and enter:
 
    | field | value |
