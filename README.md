@@ -1,5 +1,6 @@
 # SQLSage
 
+[![npm](https://img.shields.io/npm/v/sqlsage)](https://www.npmjs.com/package/sqlsage)
 [![CI](https://github.com/Figo5/sqlsage/actions/workflows/ci.yml/badge.svg)](https://github.com/Figo5/sqlsage/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/Figo5/sqlsage)](https://github.com/Figo5/sqlsage/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -15,26 +16,23 @@ SQLSage is a command-line PostgreSQL query explainer and optimizer. Give it a
 
 SQLSage can run completely offline. A database connection is optional.
 
-## Download and install
+## Install
 
 Requirements: Node.js 22.18 or newer (Node 22 LTS and Node 24 are both tested in CI) and npm.
 
-Download the current package from the
-[v0.1.0 release](https://github.com/Figo5/sqlsage/releases/tag/v0.1.0), then install it:
-
 ```bash
-npm install --global ./sqlsage-0.1.0.tgz
+npm install --global sqlsage
 sqlsage --version
 ```
 
-You can also install directly from the release URL:
+Or run it without installing:
 
 ```bash
-npm install --global https://github.com/Figo5/sqlsage/releases/download/v0.1.0/sqlsage-0.1.0.tgz
+npx sqlsage demo
 ```
 
-The release includes `SHA256SUMS.txt` so you can verify the download before
-installation.
+Each [GitHub release](https://github.com/Figo5/sqlsage/releases) also carries a tarball
+and `SHA256SUMS.txt` if you would rather install from a verified download.
 
 ## Try it in 30 seconds
 

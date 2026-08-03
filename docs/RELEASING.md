@@ -12,17 +12,10 @@ Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 These steps cannot be automated from this repository — they are account-level actions on
 npm.
 
-1. **Claim the package name with a first manual publish.** npm can only attach a trusted
-   publisher to a package that exists. From a clean checkout of the release commit:
-
-   ```bash
-   npm run build
-   npm publish --dry-run     # confirm the file list first
-   npm publish
-   ```
-
-   A published version cannot be replaced, and after 72 hours it cannot be unpublished
-   at all. Check the dry-run output before running the real command.
+1. ~~**Claim the package name with a first manual publish.**~~ **Done** — `sqlsage@0.1.0`
+   was published manually on 2026-08-02, which is what made the package exist so a
+   trusted publisher could be attached. That version carries no provenance, because a
+   manual publish cannot produce one; everything released through the workflow does.
 
 2. **Configure the trusted publisher.** On npmjs.com go to the `sqlsage` package →
    *Settings* → *Trusted publisher*, choose **GitHub Actions**, and enter:

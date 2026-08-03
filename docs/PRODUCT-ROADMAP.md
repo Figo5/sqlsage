@@ -21,12 +21,11 @@ Current capabilities include:
 - conservative index and query-rewrite change sets;
 - text, Markdown, and deterministic JSON output;
 - a twelve-query acceptance corpus;
-- an installable GitHub Release package with automated CI and checksums; and
+- an npm package plus GitHub Release tarballs with automated CI and checksums; and
 - `sqlsage demo` and `sqlsage doctor` for first-run success and environment validation.
 
-Not yet on npm: installation is still via GitHub Release tarball or a source build. The
-release workflow is ready to publish; see [Releasing](RELEASING.md) for the one-time
-maintainer step that unblocks it.
+Published on npm: `npm install --global sqlsage`, or `npx sqlsage demo`.
+Releases: <https://www.npmjs.com/package/sqlsage>
 
 Repository: <https://github.com/Figo5/sqlsage>
 
@@ -61,10 +60,10 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
 ### Product priorities
 
 - Publish on npm so installation becomes `npm install --global sqlsage` or
-  `npx sqlsage`. **Release automation done; not yet published.** The release workflow
-  publishes via npm trusted publishing, but npm can only attach a trusted publisher to a
-  package that already exists, so the first publish is a manual maintainer step. See
-  [Releasing](RELEASING.md).
+  `npx sqlsage`. **Done — published 2026-08-02 as 0.1.0.** Verified from the registry:
+  6 files, `engines >=22.18.0`, `bin` intact, and `npm install --global sqlsage &&
+  sqlsage demo` produces a full report. 0.1.0 carries no provenance because a manual
+  publish cannot: that requires OIDC from CI, so every release after it gets one.
 - Use npm trusted publishing through GitHub Actions to avoid long-lived publishing
   tokens and produce build provenance. **Done** — `.github/workflows/release.yml` uses
   OIDC (`id-token: write`), stores no npm token, verifies the tag matches
