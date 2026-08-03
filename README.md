@@ -190,9 +190,10 @@ The offline schema importer supports common `CREATE SCHEMA`, `SET search_path`,
 `CREATE TABLE`, primary/foreign keys, nullability, and PostgreSQL index definitions.
 It rejects unsupported DDL rather than silently returning partial metadata.
 
-See [Supported constructs](docs/SUPPORTED.md) for the measured list of what is
-accepted and rejected, [Usage and inputs](docs/USAGE.md) for the full input contract, and
-[Architecture](docs/ARCHITECTURE.md) for the analysis pipeline.
+See [Supported constructs](docs/SUPPORTED.md) for the measured list of what is accepted
+and rejected, [Limitations and known gaps](docs/LIMITATIONS.md) for where the advice is
+weak and where SQLSage has been wrong, [Usage and inputs](docs/USAGE.md) for the full
+input contract, and [Architecture](docs/ARCHITECTURE.md) for the analysis pipeline.
 
 ## Build from source
 

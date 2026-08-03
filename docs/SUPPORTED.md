@@ -220,5 +220,7 @@ sqlsage doctor --catalog catalog.json --schema schema.sql --plan plan.json
 
 ## Related
 
+- [Limitations and known gaps](LIMITATIONS.md) — where the advice is weak, separate from
+  what parses
 - [Usage and inputs](USAGE.md) — the full input contract
 - [Architecture](ARCHITECTURE.md) — the analysis pipeline
