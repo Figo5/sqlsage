@@ -4,9 +4,15 @@ import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+// Read from package.json rather than hardcoding: this asserts the installed CLI
+// reports the version it was built from, and does not need editing every release.
+const packageVersion: string = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+).version;
 const temporary = await mkdtemp(join(tmpdir(), 'sqlsage-install-'));
 const packageDirectory = join(temporary, 'package');
 const prefix = join(temporary, 'prefix');
@@ -29,7 +35,7 @@ try {
 
   const binary = join(prefix, 'node_modules', '.bin', 'sqlsage');
   const version = command(binary, ['--version'], temporary);
-  assert.match(version.stdout, /^0\.1\.0\s*$/);
+  assert.equal(version.stdout.trim(), packageVersion);
 
   const api = command(process.execPath, [
     '--input-type=module',
