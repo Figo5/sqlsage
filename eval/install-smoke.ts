@@ -18,18 +18,32 @@ const packageDirectory = join(temporary, 'package');
 const prefix = join(temporary, 'prefix');
 
 /**
- * Windows has no `npm`; it has `npm.cmd`, and spawnSync without a shell will not
- * find the former. Likewise npm writes `sqlsage.cmd` into `.bin`, not an
- * extensionless script Windows can execute.
+ * On Windows `npm` is `npm.cmd` and npm writes `sqlsage.cmd` into `.bin`, so neither
+ * is an extensionless executable. Node 20 and newer also refuse to spawn a `.cmd` or
+ * `.bat` without `shell: true` (the CVE-2024-27980 mitigation), so both the name and
+ * the shell flag have to change together.
  */
 const isWindows = process.platform === 'win32';
 const npmExecutable = isWindows ? 'npm.cmd' : 'npm';
 const binaryName = isWindows ? 'sqlsage.cmd' : 'sqlsage';
 
+/** Under `shell: true` the args are re-parsed by the shell, so spaces need quoting. */
+function shellSafe(argument: string): string {
+  return isWindows && /[\s&|<>^]/.test(argument) ? `"${argument}"` : argument;
+}
+
 function command(executable: string, args: string[], cwd = root) {
-  const result = spawnSync(executable, args, { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+  const result = spawnSync(executable, isWindows ? args.map(shellSafe) : args, {
+    cwd,
+    encoding: 'utf8',
+    shell: isWindows,
+    env: { ...process.env, NO_COLOR: '1' },
+  });
   if (result.status !== 0) {
-    throw new Error(`${executable} ${args.join(' ')} failed:\n${result.stderr || result.stdout}`);
+    // result.error carries spawn failures such as EINVAL or ENOENT, where stdout and
+    // stderr are both null. Reporting only those printed "undefined" and said nothing.
+    const detail = result.error?.message ?? result.stderr ?? result.stdout ?? `exit code ${result.status}`;
+    throw new Error(`${executable} ${args.join(' ')} failed:\n${detail}`);
   }
   return result;
 }
