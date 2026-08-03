@@ -4,15 +4,16 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const CLI = new URL('./cli.ts', import.meta.url).pathname;
+const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 const packageVersion = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url).pathname, 'utf8'),
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
 ).version as string;
-const CATALOG = new URL('../corpus/catalog.json', import.meta.url).pathname;
-const SCHEMA = new URL('../corpus/schema.sql', import.meta.url).pathname;
-const Q01_PLAN = new URL('../groundtruth/q01-nonsargable-date.json', import.meta.url).pathname;
-const Q10_PLAN = new URL('../groundtruth/q10-having-instead-of-where.json', import.meta.url).pathname;
+const CATALOG = fileURLToPath(new URL('../corpus/catalog.json', import.meta.url));
+const SCHEMA = fileURLToPath(new URL('../corpus/schema.sql', import.meta.url));
+const Q01_PLAN = fileURLToPath(new URL('../groundtruth/q01-nonsargable-date.json', import.meta.url));
+const Q10_PLAN = fileURLToPath(new URL('../groundtruth/q10-having-instead-of-where.json', import.meta.url));
 
 function run(args: string[], input?: string) {
   return spawnSync(process.execPath, [CLI, ...args], {

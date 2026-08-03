@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { loadCatalog } from './catalog.ts';
 import { analyze } from './index.ts';
@@ -134,7 +135,7 @@ test('accepts a raw Plan object and reports analyzed spill and temporary I/O fac
 
 test('applies analyzed q01 evidence immutably as baseline-only observed execution', async () => {
   const bundle = fixture('q01-nonsargable-date') as { sql: string };
-  const catalog = await loadCatalog(new URL('corpus/catalog.json', ROOT).pathname);
+  const catalog = await loadCatalog(fileURLToPath(new URL('corpus/catalog.json', ROOT)));
   const baseline = analyze(bundle.sql, catalog).analysis;
   const evidence = normalizePlanEvidence(fixture('q01-nonsargable-date'));
 
@@ -156,7 +157,7 @@ test('applies analyzed q01 evidence immutably as baseline-only observed executio
 
 test('applying plan-only evidence captures a baseline plan but creates no runtime or verification verdict', async () => {
   const bundle = fixture('q10-having-instead-of-where') as { sql: string };
-  const catalog = await loadCatalog(new URL('corpus/catalog.json', ROOT).pathname);
+  const catalog = await loadCatalog(fileURLToPath(new URL('corpus/catalog.json', ROOT)));
   const baseline = analyze(bundle.sql, catalog).analysis;
   const evidence = normalizePlanEvidence({
     Plan: {
@@ -185,7 +186,7 @@ test('applying plan-only evidence captures a baseline plan but creates no runtim
 });
 
 test('loads a SQLSage ground-truth bundle from disk', () => {
-  const evidence = loadPlanEvidence(new URL('groundtruth/q10-having-instead-of-where.json', ROOT).pathname);
+  const evidence = loadPlanEvidence(fileURLToPath(new URL('groundtruth/q10-having-instead-of-where.json', ROOT)));
   assert.equal(evidence.mode, 'analyzed');
   assert.equal(evidence.summary.executionMs, 6.644);
 });
@@ -215,7 +216,7 @@ test('rejects malformed or ambiguous plan inputs with concise PlanInputError mes
 });
 
 test('row misestimates are filtered, ranked by rows misjudged, and flagged when severe', async () => {
-  const catalog = await loadCatalog(new URL('../corpus/catalog.json', import.meta.url).pathname);
+  const catalog = await loadCatalog(fileURLToPath(new URL('../corpus/catalog.json', import.meta.url)));
   const base = analyze('SELECT order_id FROM shop.orders', catalog).analysis;
 
   const node = (nodeType: string, planRows: number, actualRows: number, loops = 1) => ({
@@ -261,7 +262,7 @@ test('row misestimates are filtered, ranked by rows misjudged, and flagged when 
 });
 
 test('plan prose states where the evidence came from, not just whether it was analyzed', async () => {
-  const catalog = await loadCatalog(new URL('../corpus/catalog.json', import.meta.url).pathname);
+  const catalog = await loadCatalog(fileURLToPath(new URL('../corpus/catalog.json', import.meta.url)));
   const base = analyze('SELECT order_id FROM shop.orders', catalog).analysis;
 
   const analyzed = [{

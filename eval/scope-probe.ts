@@ -4,6 +4,7 @@ import { loadCatalog } from '../src/catalog.ts';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 const dir = mkdtempSync(join(tmpdir(), 'scope-'));
 const BASE = `CREATE SCHEMA shop;\nCREATE TABLE shop.t (id bigint PRIMARY KEY, k bigint NOT NULL, v text);\n`;
 const DDL: [string, string][] = [
@@ -44,7 +45,7 @@ for (const [name, sql] of DDL) {
   try { const c = await loadSchemaCatalog(p); console.log(`ACCEPT | ${name} | ${c.tables.length} table(s)`); }
   catch (e: any) { console.log(`REJECT | ${name} | ${String(e.message).slice(0,80)}`); }
 }
-const cat = await loadCatalog(new URL('../corpus/catalog.json', import.meta.url).pathname);
+const cat = await loadCatalog(fileURLToPath(new URL('../corpus/catalog.json', import.meta.url)));
 const Q: [string,string][] = [
   ['parameter $1', "SELECT * FROM shop.orders o WHERE o.customer_id = $1"],
   ['INSERT', 'INSERT INTO shop.orders (order_id) VALUES (1)'],

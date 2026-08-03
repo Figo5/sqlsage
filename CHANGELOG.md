@@ -2,6 +2,24 @@
 
 All notable changes to SQLSage are documented here.
 
+## 0.2.1 — 2026-08-03
+
+### Fixed
+
+- **Windows: `sqlsage demo`, `sqlsage doctor`, and every bundled-corpus query failed**
+  with `ENOENT ... 'C:\\C:\\...\\corpus\\catalog.json'` — note the doubled drive letter.
+  The bundled catalog path was taken from a URL's `pathname`, which is a URL component
+  rather than a filesystem path: on Windows it keeps the leading slash (`/C:/Users/...`),
+  and `fs` then resolves that against the current drive root. POSIX has no drive letter,
+  so the same expression worked on Linux and macOS and CI never saw it. Paths are now
+  derived with `fileURLToPath`.
+
+  `doctor` compounded this by advising a reinstall, which could never help: the file was
+  always present and correctly installed.
+
+- The same defect also broke **any install directory containing a space**, on every
+  platform, because a `pathname` stays percent-encoded and arrived as `%20`.
+
 ## 0.2.0 — 2026-08-02
 
 Additive throughout: no breaking changes. `engines` widened rather than narrowed, and

@@ -15,6 +15,7 @@ import { CORPUS } from '../corpus/queries.ts';
 import { loadCatalog } from './catalog.ts';
 import type { DoctorCliOptions } from './cli-args.ts';
 import { analyze } from './index.ts';
+import { bundledCatalogPath } from './paths.ts';
 import { loadPlanEvidence } from './plan-evidence.ts';
 import { renderReport } from './report/index.ts';
 import { loadSchemaCatalog } from './schema.ts';
@@ -68,7 +69,7 @@ function checkNode(): CheckResult {
 
 async function checkBundledCatalog(): Promise<CheckResult> {
   const name = 'Bundled example catalog';
-  const path = new URL('../corpus/catalog.json', import.meta.url).pathname;
+  const path = bundledCatalogPath();
   try {
     const catalog = await loadCatalog(path);
     return pass(name, `${catalog.tables.length} tables readable from the packaged catalog`);
@@ -90,7 +91,7 @@ async function checkSelfTest(): Promise<CheckResult> {
   const query = CORPUS.find((entry) => entry.id.startsWith('q05')) ?? CORPUS[0];
   if (!query) return fail(name, 'no bundled corpus queries are present', 'npm install --global sqlsage    # reinstall');
   try {
-    const catalog = await loadCatalog(new URL('../corpus/catalog.json', import.meta.url).pathname);
+    const catalog = await loadCatalog(bundledCatalogPath());
     const result = analyze(query.sql, catalog);
     const report = renderReport(result.analysis, { format: 'markdown' });
     if (!report.trim()) throw new Error('the renderer produced an empty report');
