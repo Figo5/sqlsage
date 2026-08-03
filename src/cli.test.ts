@@ -272,7 +272,10 @@ test('analyze failures carry an exact corrective command', () => {
     // prints its own corrective command, rather than restating a partial diagnosis.
     const badCatalog = run(['analyze', '--sql', 'SELECT 1', '--catalog', malformed]);
     assert.equal(badCatalog.status, 1);
-    assert.match(badCatalog.stderr, new RegExp(`try: sqlsage doctor --catalog ${malformed}`));
+    // Compared literally, not as a regex: a Windows path is full of backslashes,
+    // which RegExp reads as escapes.
+    assert.ok(badCatalog.stderr.includes(`try: sqlsage doctor --catalog ${malformed}`),
+      badCatalog.stderr);
 
     const missingSchema = run(['analyze', '--sql', 'SELECT 1', '--schema', join(dir, 'nope.sql')]);
     assert.equal(missingSchema.status, 1);
@@ -300,7 +303,11 @@ test('analyze failures carry an exact corrective command', () => {
     // Paths needing quoting stay copy-pasteable.
     const spaced = join(dir, 'my catalog.json');
     writeFileSync(spaced, '{"tables": []}');
-    assert.match(run(['analyze', '--sql', 'SELECT 1', '--catalog', spaced]).stderr, /try: sqlsage doctor --catalog '.*my catalog\.json'/);
+    // Quoting must match the reader's shell, or the suggestion cannot be pasted:
+    // POSIX single quotes quote nothing in cmd.exe.
+    const spacedErr = run(['analyze', '--sql', 'SELECT 1', '--catalog', spaced]).stderr;
+    const quote = process.platform === 'win32' ? '"' : "'";
+    assert.ok(spacedErr.includes(`try: sqlsage doctor --catalog ${quote}${spaced}${quote}`), spacedErr);
 
     for (const result of [badCatalog, missingSchema, missingPlan, unreachable, noMetadata, badCorpus]) {
       assert.doesNotMatch(result.stderr, /at .*\.ts:\d+/); // no stack traces

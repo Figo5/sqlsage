@@ -233,9 +233,19 @@ async function runAnalysis(options: AnalyzeCliOptions, io: CliIo): Promise<numbe
   return blocked ? 2 : 0;
 }
 
-/** Quote only when needed, so the common case stays copy-pasteable as written. */
+/**
+ * Quote only when needed, so the common case stays copy-pasteable as written.
+ *
+ * Quoting is platform-aware because the point of these commands is that the reader
+ * can paste them. POSIX single quotes do not quote anything in `cmd.exe`, so a
+ * Windows path containing a space would be pasted broken; double quotes work in
+ * both `cmd.exe` and PowerShell.
+ */
 function shellArg(value: string): string {
-  return /^[A-Za-z0-9_./:@-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+  if (/^[A-Za-z0-9_./:@\\-]+$/.test(value)) return value;
+  return process.platform === 'win32'
+    ? `"${value.replace(/"/g, '""')}"`
+    : `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 /**

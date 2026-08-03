@@ -39,7 +39,11 @@ test('no source file derives a filesystem path from a URL pathname', () => {
         continue;
       }
       if (!/\.(ts|js|mts|mjs)$/.test(entry.name)) continue;
-      for (const [index, line] of readFileSync(full, 'utf8').split('\n').entries()) {
+      // Split on CRLF too. On a Windows checkout each line keeps a trailing \r,
+      // which is a line terminator in JavaScript -- so `.` will not match it and the
+      // comment-stripping regex below silently fails, tripping this guard on its own
+      // explanatory comment.
+      for (const [index, line] of readFileSync(full, 'utf8').split(/\r?\n/).entries()) {
         // Comments describe this bug deliberately, including in this file. Only
         // executable code counts, or the guard trips on its own explanation.
         const code = line.replace(/\/\/.*$/, '').replace(/^\s*\*.*$/, '');
