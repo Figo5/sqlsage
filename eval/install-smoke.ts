@@ -17,6 +17,15 @@ const temporary = await mkdtemp(join(tmpdir(), 'sqlsage-install-'));
 const packageDirectory = join(temporary, 'package');
 const prefix = join(temporary, 'prefix');
 
+/**
+ * Windows has no `npm`; it has `npm.cmd`, and spawnSync without a shell will not
+ * find the former. Likewise npm writes `sqlsage.cmd` into `.bin`, not an
+ * extensionless script Windows can execute.
+ */
+const isWindows = process.platform === 'win32';
+const npmExecutable = isWindows ? 'npm.cmd' : 'npm';
+const binaryName = isWindows ? 'sqlsage.cmd' : 'sqlsage';
+
 function command(executable: string, args: string[], cwd = root) {
   const result = spawnSync(executable, args, { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
   if (result.status !== 0) {
@@ -28,12 +37,12 @@ function command(executable: string, args: string[], cwd = root) {
 try {
   await mkdir(packageDirectory);
   await mkdir(prefix);
-  command('npm', ['pack', '--pack-destination', packageDirectory]);
+  command(npmExecutable, ['pack', '--pack-destination', packageDirectory]);
   const tarballs = (await readdir(packageDirectory)).filter((name) => name.endsWith('.tgz'));
   assert.equal(tarballs.length, 1, 'npm pack must produce exactly one tarball');
-  command('npm', ['install', '--ignore-scripts', '--prefix', prefix, join(packageDirectory, tarballs[0]!)]);
+  command(npmExecutable, ['install', '--ignore-scripts', '--prefix', prefix, join(packageDirectory, tarballs[0]!)]);
 
-  const binary = join(prefix, 'node_modules', '.bin', 'sqlsage');
+  const binary = join(prefix, 'node_modules', '.bin', binaryName);
   const version = command(binary, ['--version'], temporary);
   assert.equal(version.stdout.trim(), packageVersion);
 

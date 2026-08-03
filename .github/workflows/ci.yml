@@ -11,12 +11,13 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # Both ends of the supported range: the engines floor and current.
         node-version: [22.x, 24.x]
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v7
@@ -29,6 +30,12 @@ jobs:
       - run: node eval/run.ts
       - run: npm run build
       - run: npm run test:install
+      # The commands a new user runs first, and the exact three that were broken on
+      # Windows in 0.2.0 by a path built from a URL pathname. Every suite above passed
+      # while these failed, because the failing axis was the platform and CI ran one.
+      - run: node src/cli.ts demo
+      - run: node src/cli.ts doctor
+      - run: node src/cli.ts analyze --corpus q05 --format json
 
   # Does SQLSage work against a given PostgreSQL major version at all? This job
   # exercises the connected path -- introspection, doctor, live EXPLAIN and
