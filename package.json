@@ -22,7 +22,7 @@
     "cli"
   ],
   "bin": {
-    "sqlsage": "./dist/cli.js"
+    "sqlsage": "dist/cli.js"
   },
   "exports": {
     ".": "./dist/index.js"
