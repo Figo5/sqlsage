@@ -1,6 +1,6 @@
 # SQLSage Product Roadmap
 
-Last updated: 2026-08-01 (Phase 1 demo/doctor/release automation and Node 22; Phase 2 schema-parser work)
+Last updated: 2026-08-02 (0.2.0 released through the automated pipeline; Phase 1 code-complete)
 
 ## Purpose
 
@@ -10,7 +10,7 @@ it does not authorize implementing them without a specific request from the owne
 
 ## Current product state
 
-SQLSage v0.1.0 is a public, CLI-first PostgreSQL query explainer and optimizer.
+SQLSage v0.2.0 is a public, CLI-first PostgreSQL query explainer and optimizer.
 
 Current capabilities include:
 
@@ -22,7 +22,8 @@ Current capabilities include:
 - text, Markdown, and deterministic JSON output;
 - a twelve-query acceptance corpus;
 - an npm package plus GitHub Release tarballs with automated CI and checksums; and
-- `sqlsage demo` and `sqlsage doctor` for first-run success and environment validation.
+- `sqlsage demo` and `sqlsage doctor` for first-run success and environment validation; and
+- `sqlsage compare` for diffing two captured plans.
 
 Published on npm: `npm install --global sqlsage`, or `npx sqlsage demo`.
 Releases: <https://www.npmjs.com/package/sqlsage>. Releasing is tag-driven through npm
@@ -30,7 +31,7 @@ trusted publishing; see [Releasing](RELEASING.md).
 
 Repository: <https://github.com/Figo5/sqlsage>
 
-Latest release: <https://github.com/Figo5/sqlsage/releases/tag/v0.1.0>
+Latest release: <https://github.com/Figo5/sqlsage/releases/tag/v0.2.0>
 
 ## Product direction
 
@@ -61,7 +62,8 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
 ### Product priorities
 
 - Publish on npm so installation becomes `npm install --global sqlsage` or
-  `npx sqlsage`. **Done — published 2026-08-02 as 0.1.0.** Verified from the registry:
+  `npx sqlsage`. **Done — 0.1.0 published manually 2026-08-02, 0.2.0 through the
+  pipeline the same day.** Verified from the registry:
   6 files, `engines >=22.18.0`, `bin` intact, and `npm install --global sqlsage &&
   sqlsage demo` produces a full report. 0.1.0 carries no provenance because a manual
   publish cannot: that requires OIDC from CI, so every release after it gets one.
@@ -70,9 +72,11 @@ Goal: let an unfamiliar user succeed without reading all of the documentation.
   `.github/workflows/release.yml` uses OIDC (`id-token: write`), stores no npm token,
   verifies the tag matches `package.json`, and skips publishing a version already on the
   registry. The trusted publisher is attached on npm, so releasing is now entirely
-  tag-driven: bump the version, tag `vX.Y.Z`, push. The first tagged release will be the
-  first to carry a provenance attestation, which is also what proves the OIDC path end to
-  end — it has not yet run.
+  tag-driven: bump the version, tag `vX.Y.Z`, push. **Proven end to end by the v0.2.0
+  release**, which published with no npm token in the repository. Verified from the
+  registry: a SLSA provenance v1 attestation is attached, and `npm audit signatures` on a
+  clean install reports one verified attestation. 0.1.0 remains the only version without
+  one, because a manual publish cannot produce it.
 - Investigate supporting Node.js 22 as well as Node.js 24. **Done — Node 22 is
   supported.** Verified on Node 22.23.2 in a clean container: the full suite,
   `eval/dump-ir.ts --check` (406 assertions), `eval/run.ts` (12/12), the build, and the
@@ -342,6 +346,11 @@ The next milestone is:
 
 > Recruit 10 external users, complete five successful real-query analyses, and use
 > their feedback to define the first genuinely user-driven release.
+
+Nothing in the toolchain gates this any more. Installation is one command, the release
+pipeline is automated and provenanced, and Phase 1 is code-complete apart from the
+terminal recording. Every remaining Phase 1 and Phase 2 item except the limitations page
+needs users, their queries, or repository settings.
 
 ## Instructions for future coding sessions
 
