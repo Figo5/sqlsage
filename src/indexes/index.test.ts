@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { CORPUS } from '../../corpus/queries.ts';
 import { detectAntiPatterns } from '../antipatterns/index.ts';
@@ -140,7 +141,7 @@ test('no index is recommended for a plain view, which has no storage to index', 
   const { analyze } = await import('../index.ts');
   const { CORPUS } = await import('../../corpus/queries.ts');
   const query = CORPUS.find((entry) => entry.id.startsWith('q01'))!;
-  const base = await loadCatalog(new URL('../../corpus/catalog.json', import.meta.url).pathname);
+  const base = await loadCatalog(fileURLToPath(new URL('../../corpus/catalog.json', import.meta.url)));
 
   // The same query against the same shape, differing only in relation kind.
   assert.ok(analyze(query.sql, base).analysis.indexes.length > 0, 'baseline table must yield advice');

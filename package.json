@@ -1,6 +1,6 @@
 {
   "name": "sqlsage",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Correctness-first PostgreSQL query explainer and optimizer CLI",
   "license": "MIT",

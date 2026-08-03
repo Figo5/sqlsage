@@ -12,6 +12,7 @@ import type { AnalyzeCliOptions, CliOptions, CompareCliOptions, DemoCliOptions, 
 import { analyze } from './index.ts';
 import { bindQuery } from './ir/index.ts';
 import { collectLiveEvidence, LiveInputError } from './live.ts';
+import { bundledCatalogPath } from './paths.ts';
 import { applyPlanEvidence, loadPlanEvidence, normalizePlanEvidence, PlanInputError } from './plan-evidence.ts';
 import type { PlanEvidence } from './plan-evidence.ts';
 import { comparePlans, renderComparison } from './compare/index.ts';
@@ -104,10 +105,6 @@ async function resolveQuery(source: QuerySource, stdin: CliIo['stdin']): Promise
 
 function selectedFormat(options: AnalyzeCliOptions, stdout: CliIo['stdout']): OutputFormat {
   return options.format ?? (stdout.isTTY ? 'text' : 'markdown');
-}
-
-function bundledCatalogPath(): string {
-  return new URL('../corpus/catalog.json', import.meta.url).pathname;
 }
 
 interface AnalysisContext {
