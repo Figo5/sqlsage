@@ -273,9 +273,17 @@ test('analyze failures carry an exact corrective command', () => {
     const badCatalog = run(['analyze', '--sql', 'SELECT 1', '--catalog', malformed]);
     assert.equal(badCatalog.status, 1);
     // Compared literally, not as a regex: a Windows path is full of backslashes,
-    // which RegExp reads as escapes.
-    assert.ok(badCatalog.stderr.includes(`try: sqlsage doctor --catalog ${malformed}`),
-      badCatalog.stderr);
+    // which RegExp reads as escapes. The path may arrive quoted -- shellArg quotes
+    // anything outside its safe set, and a Windows temp path can contain `~` from an
+    // 8.3 short name. Quoting is never wrong, so accept it either way here; the
+    // spaces case below is where the exact quote character is pinned.
+    assert.ok(
+      badCatalog.stderr.includes(`--catalog ${malformed}`)
+        || badCatalog.stderr.includes(`--catalog "${malformed}"`)
+        || badCatalog.stderr.includes(`--catalog '${malformed}'`),
+      badCatalog.stderr,
+    );
+    assert.match(badCatalog.stderr, /try: sqlsage doctor --catalog /);
 
     const missingSchema = run(['analyze', '--sql', 'SELECT 1', '--schema', join(dir, 'nope.sql')]);
     assert.equal(missingSchema.status, 1);
