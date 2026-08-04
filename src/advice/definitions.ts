@@ -60,7 +60,52 @@ export function qualifiedTable(catalog: Catalog, source: string): string {
 export function removeQualifier(expression: string, alias: string | undefined): string {
   if (!alias) return expression.trim();
   const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return expression.replace(new RegExp(`\\b${escaped}\\.`, 'gi'), '').trim();
+  const qualifier = new RegExp(`^${escaped}\\.`, 'i');
+
+  // The qualifier must only be stripped from code, never from data. A global
+  // replace also rewrote the inside of string literals, so
+  //   o.coupon_code = 'o.SPECIAL'
+  // became
+  //   coupon_code = 'SPECIAL'
+  // and that text is emitted as a partial index's WHERE clause — an index that
+  // silently covers a different set of rows than the predicate it came from.
+  let out = '';
+  let i = 0;
+  while (i < expression.length) {
+    const ch = expression[i]!;
+    if (ch === "'" || ch === '"') {
+      const end = endOfQuoted(expression, i, ch);
+      out += expression.slice(i, end);
+      i = end;
+      continue;
+    }
+    // Only at an identifier boundary, so `xo.` is not treated as `o.`.
+    const boundary = i === 0 || !/[A-Za-z0-9_$."]/.test(expression[i - 1]!);
+    const match = boundary ? qualifier.exec(expression.slice(i)) : null;
+    if (match) {
+      i += match[0].length;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out.trim();
+}
+
+/** Index just past a quoted run starting at `start`, honouring doubled quotes. */
+function endOfQuoted(text: string, start: number, quote: string): number {
+  let i = start + 1;
+  while (i < text.length) {
+    if (text[i] === quote) {
+      if (text[i + 1] === quote) {
+        i += 2;
+        continue;
+      }
+      return i + 1;
+    }
+    i++;
+  }
+  return text.length; // unterminated: keep the remainder verbatim
 }
 
 export function keySql(key: string): string {

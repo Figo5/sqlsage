@@ -104,6 +104,29 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
 function detectNullableNotIn(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
   for (const block of ir.blocks) {
     for (const predicate of block.predicates) {
+      // A literal NULL in a NOT IN list is not a risk, it is a guarantee: every
+      // comparison against NULL is UNKNOWN, so `x NOT IN (1, 2, NULL)` returns
+      // no rows for any x, forever. The gate below only ever looked at subquery
+      // operands, so this shape passed in silence.
+      if (predicate.kind === 'in-list' && predicate.negated && listContainsNullLiteral(predicate.sql)) {
+        const ref = singleResolvedColumn(predicate);
+        addFinding(sink, {
+          id: 'not-in-null-literal',
+          title: 'NOT IN against a list containing NULL returns no rows',
+          severity: 'critical',
+          category: 'correctness',
+          actionability: 'required',
+          evidence: { sqlFragment: predicate.sql, relation: ref?.table, column: ref?.column },
+          impact:
+            `${predicate.sql} compares against a list containing a NULL literal. Every comparison with NULL is UNKNOWN, ` +
+            'so NOT IN cannot be true for any row and this predicate eliminates the entire result — not just the listed values.',
+          remediation:
+            'Remove the NULL from the list, or express the intent as NOT EXISTS / a left-join anti-join if NULL was meant to represent a missing value.',
+          caveat: 'IN (with a NULL in the list) is unaffected in the same way: it simply never matches the NULL entry.',
+          confidence: 'high',
+        });
+      }
+
       if (
         predicate.kind !== 'subquery' ||
         !predicate.negated ||
@@ -114,6 +137,12 @@ function detectNullableNotIn(ir: QueryIR, catalog: Catalog, sink: FindingSink): 
         const child = ir.blocks.find((candidate) => candidate.id === childId);
         const output = child?.projections[0]?.columns[0];
         if (!child || child.projections.length !== 1 || output?.nullable !== true) continue;
+        // A catalog-nullable column is not a nullable *result* when the
+        // subquery filters the NULLs out. `NOT IN (SELECT e.customer_id FROM
+        // events e WHERE e.customer_id IS NOT NULL)` is exactly the repair this
+        // finding asks for, and reporting it as the defect tells the reader to
+        // fix something they have already fixed.
+        if (subqueryExcludesNulls(child, output)) continue;
 
         const relation = output.table ?? relationSource(child, output.alias);
         const column = output.column;
@@ -286,6 +315,52 @@ function detectDeepOffsets(ir: QueryIR, catalog: Catalog, sink: FindingSink): vo
       confidence: 'high',
     });
   }
+}
+
+/**
+ * True when a bare `NULL` keyword appears in the predicate's value list.
+ *
+ * Quoted runs are skipped so the string `'NULL'`, which is an ordinary value,
+ * is not mistaken for the keyword.
+ */
+function listContainsNullLiteral(sql: string): boolean {
+  let bare = '';
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      i++;
+      while (i < sql.length) {
+        if (sql[i] === quote) {
+          if (sql[i + 1] === quote) { i += 2; continue; }
+          break;
+        }
+        i++;
+      }
+      bare += ' ';
+      continue;
+    }
+    bare += ch;
+  }
+  return /\bNULL\b/i.test(bare.slice(bare.indexOf('(') + 1));
+}
+
+/**
+ * True when the subquery cannot emit NULL for its output column, because a
+ * `WHERE ... IS NOT NULL` on that exact column removes them first.
+ *
+ * Only a non-negated `null-check` on the output column counts. An `IS NULL`
+ * test, or one on a different column, proves nothing about this one.
+ */
+function subqueryExcludesNulls(child: QueryBlockIR, output: ResolvedColumnRef): boolean {
+  return child.predicates.some((predicate) =>
+    predicate.clause === 'where' &&
+    predicate.kind === 'null-check' &&
+    predicate.negated === true && // `IS NOT NULL` is the negated null-check
+    predicate.columns.length === 1 &&
+    predicate.columns[0]!.column === output.column &&
+    (predicate.columns[0]!.alias ?? '') === (output.alias ?? ''),
+  );
 }
 
 /**

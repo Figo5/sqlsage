@@ -308,6 +308,48 @@ test('grouping-key HAVING pushdown produces no fabricated performance claim', ()
 // See docs/AUDIT-2026-08-03.md.
 // ---------------------------------------------------------------------------
 
+test('the NOT IN gate respects a NULL guard and catches a NULL literal', () => {
+  const fires = (id: string, sql: string) => findings(sql).some((finding) => finding.id === id);
+
+  // False positive: the subquery already filters the NULLs out, which is the
+  // repair this finding asks for. Reporting it tells the reader to fix
+  // something they have done.
+  assert.equal(
+    fires('not-in-nullable-subquery', `SELECT c.customer_id FROM shop.customers c
+      WHERE c.customer_id NOT IN (
+        SELECT e.customer_id FROM shop.events e WHERE e.customer_id IS NOT NULL)`),
+    false,
+  );
+  // The guard must be narrow: a different column, or IS NULL, proves nothing.
+  assert.equal(
+    fires('not-in-nullable-subquery', `SELECT c.customer_id FROM shop.customers c
+      WHERE c.customer_id NOT IN (
+        SELECT e.customer_id FROM shop.events e WHERE e.event_id IS NOT NULL)`),
+    true,
+  );
+  assert.equal(
+    fires('not-in-nullable-subquery', `SELECT c.customer_id FROM shop.customers c
+      WHERE c.customer_id NOT IN (
+        SELECT e.customer_id FROM shop.events e WHERE e.customer_id IS NULL)`),
+    true,
+  );
+
+  // False negative: a NULL in the list makes NOT IN return no rows, ever.
+  assert.equal(
+    fires('not-in-null-literal', 'SELECT c.customer_id FROM shop.customers c WHERE c.customer_id NOT IN (1, 2, NULL)'),
+    true,
+  );
+  assert.equal(
+    fires('not-in-null-literal', 'SELECT c.customer_id FROM shop.customers c WHERE c.customer_id NOT IN (1, 2)'),
+    false,
+  );
+  // The string 'NULL' is an ordinary value, not the keyword.
+  assert.equal(
+    fires('not-in-null-literal', `SELECT c.customer_id FROM shop.customers c WHERE c.loyalty_tier NOT IN ('NULL', 'x')`),
+    false,
+  );
+});
+
 test('a binary-coercible cast is not reported as blocking the index', () => {
   // PostgreSQL 16.14, btree on a text column: `WHERE email::varchar = '...'`
   // plans as an Index Scan. The cast is pg_cast castmethod='b' — no conversion
