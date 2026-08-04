@@ -14,7 +14,7 @@ export default defineConfig({
 
   // Contributor-facing docs that stay in the repo (and in this tree) but are
   // deliberately excluded from the public site: neither linked nor searchable.
-  srcExclude: ['PRODUCT-ROADMAP.md', 'AUDIT-2026-08-03.md'],
+  srcExclude: ['PRODUCT-ROADMAP.md', 'AUDIT-2026-08-03.md', 'RELEASING.md'],
 
   // Note: the pre-existing docs keep their filenames (and thus their default,
   // uppercase routes) — /ARCHITECTURE, /SUPPORTED, /LIMITATIONS, /USAGE,

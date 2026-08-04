@@ -266,6 +266,38 @@ export function castIsSessionDependent(from: string | undefined, to: string | un
 }
 
 /**
+ * Casts PostgreSQL performs with no work at all — `pg_cast.castmethod = 'b'`.
+ * The value's on-disk representation is unchanged, so the column is still
+ * effectively bare and an ordinary index on it remains usable.
+ *
+ * Confirmed on PostgreSQL 16.14: with a btree on a `text` column,
+ * `WHERE email::varchar = 'u7@x.com'` plans as `Index Scan`, and so does
+ * `WHERE code::text = 'c7'` on a `varchar` column. Treating these as
+ * non-sargable produced a performance finding advising the reader to remove a
+ * cast that costs nothing and blocks nothing.
+ *
+ * Taken from `SELECT castsource::regtype, casttarget::regtype FROM pg_cast
+ * WHERE castmethod = 'b'`, restricted to types this analyzer can see in a
+ * catalog. Lossy casts — `timestamptz::date`, `bigint::text` — are not here,
+ * and both genuinely fall back to a sequential scan.
+ */
+const BINARY_COERCIBLE_CASTS = new Set([
+  'varchar->text', 'text->varchar',
+  'varchar->bpchar', 'text->bpchar',
+  'xml->text', 'xml->varchar', 'xml->bpchar',
+  'bit->varbit', 'varbit->bit',
+  'cidr->inet',
+]);
+
+export function castIsBinaryCoercible(from: string | undefined, to: string | undefined): boolean {
+  if (!from || !to) return false;
+  const source = normalizeType(from);
+  const target = normalizeType(to);
+  // A cast to the column's own type is a no-op, whatever the type is.
+  return source === target || BINARY_COERCIBLE_CASTS.has(`${source}->${target}`);
+}
+
+/**
  * Common PostgreSQL functions whose volatility rules affect expression-index
  * advice. This is intentionally narrow: unknown functions stay unknown rather
  * than being labelled immutable. A STABLE expression cannot be indexed.

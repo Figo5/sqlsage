@@ -308,6 +308,30 @@ test('grouping-key HAVING pushdown produces no fabricated performance claim', ()
 // See docs/AUDIT-2026-08-03.md.
 // ---------------------------------------------------------------------------
 
+test('a binary-coercible cast is not reported as blocking the index', () => {
+  // PostgreSQL 16.14, btree on a text column: `WHERE email::varchar = '...'`
+  // plans as an Index Scan. The cast is pg_cast castmethod='b' — no conversion
+  // happens — so advising the reader to remove it is advice about nothing.
+  for (const sql of [
+    `SELECT c.customer_id FROM shop.customers c WHERE c.email::varchar = 'a@b.c';`,
+    `SELECT c.customer_id FROM shop.customers c WHERE c.email::text = 'a@b.c';`,
+  ]) {
+    assert.deepEqual(findings(sql).map((finding) => finding.id), [], sql);
+  }
+
+  // A lossy cast genuinely does fall back to a sequential scan, and still must
+  // be reported. Both were confirmed against the same server.
+  for (const sql of [
+    `SELECT o.order_id FROM shop.orders o WHERE o.created_at::date = DATE '2024-01-01';`,
+    `SELECT o.order_id FROM shop.orders o WHERE o.customer_id::text = '42';`,
+  ]) {
+    assert.ok(
+      findings(sql).some((finding) => finding.id === 'non-sargable-cast-on-column'),
+      `lossy cast should still be flagged: ${sql}`,
+    );
+  }
+});
+
 test('deep-offset advice matches the ordering the query actually has', () => {
   const offset = (sql: string) => {
     const finding = findings(sql).find((candidate) => candidate.id === 'deep-offset-pagination');

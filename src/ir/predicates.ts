@@ -15,6 +15,7 @@ import type { Catalog, Predicate, PredicateKind, ResolvedColumnRef } from '../ty
 import {
   analyzeOperand,
   analyzePattern,
+  castIsBinaryCoercible,
   castIsSessionDependent,
   containsAggregate,
   describeWrappers,
@@ -670,6 +671,17 @@ function wrappedVerdict(a: Operand, b: Operand, ctx: PredicateContext, op: strin
   const wrapped = a.wrapped ? a : b.wrapped ? b : undefined;
   if (wrapped?.wrapped) {
     const ref = ctx.resolveRef(wrapped.wrapped);
+    // A lone binary-coercible cast changes nothing PostgreSQL stores, so the
+    // column is still effectively bare and an index on it still applies.
+    const only = wrapped.wrappers.length === 1 ? wrapped.wrappers[0] : undefined;
+    if (only?.kind === 'cast' && castIsBinaryCoercible(ref.dataType, only.to)) {
+      return {
+        sargable: true,
+        reason:
+          `the cast to ${only.to} on ${label(ref)} is binary-coercible — PostgreSQL performs no conversion — ` +
+          `so the column is still effectively bare and a btree index with ${ref.column} as its leading key can serve this ${op}.`,
+      };
+    }
     const desc = describeWrappers(wrapped.wrappers);
     const extra = immutabilityNote(wrapped, ctx, ref);
     const alt = expressionIndexHint(wrapped);
