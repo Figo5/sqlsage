@@ -6,7 +6,7 @@
  * (`findTable`, `findColumn`, `distinctCount`, `equalitySelectivity`) so that
  * seven modules do not each grow a subtly different lookup.
  */
-import { distinctCount, findColumn, findTable } from '../catalog.ts';
+import { distinctCount, findColumn, findTable, parsePgArrayLiteral } from '../catalog.ts';
 import type { Catalog, IndexDef, Table } from '../types.ts';
 
 /**
@@ -16,11 +16,10 @@ import type { Catalog, IndexDef, Table } from '../types.ts';
  */
 export function asColumnList(v: unknown): string[] {
   if (Array.isArray(v)) return v.map(String);
-  if (typeof v === 'string') {
-    const inner = v.replace(/^\{|\}$/g, '');
-    if (inner === '') return [];
-    return inner.split(',').map((s) => s.trim().replace(/^"|"$/g, ''));
-  }
+  // Shares the array-literal parser rather than splitting on `,`: a quoted
+  // identifier may contain a comma, and splitting one apart silently destroys
+  // the key it names — along with every uniqueness proof that key supports.
+  if (typeof v === 'string') return parsePgArrayLiteral(v).map((s) => s.trim());
   return [];
 }
 

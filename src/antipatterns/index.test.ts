@@ -308,6 +308,33 @@ test('grouping-key HAVING pushdown produces no fabricated performance claim', ()
 // See docs/AUDIT-2026-08-03.md.
 // ---------------------------------------------------------------------------
 
+test('deep-offset advice matches the ordering the query actually has', () => {
+  const offset = (sql: string) => {
+    const finding = findings(sql).find((candidate) => candidate.id === 'deep-offset-pagination');
+    assert.ok(finding, `deep-offset finding missing for: ${sql}`);
+    return finding;
+  };
+
+  // No ORDER BY: there are no "ordered rows" to discard and no deterministic
+  // ordering to seek over. The real defect is that the pages are not stable.
+  const unordered = offset('SELECT o.order_id FROM shop.orders o LIMIT 20 OFFSET 100000;');
+  assert.doesNotMatch(unordered.impact, /ordered rows/);
+  assert.match(unordered.impact, /overlapping or missing rows|different set on a rerun/i);
+  assert.doesNotMatch(unordered.remediation, /over the complete deterministic ordering/);
+
+  // Ordered but with ties: no cursor value identifies a page boundary.
+  const ties = offset('SELECT o.order_id FROM shop.orders o ORDER BY o.status LIMIT 20 OFFSET 100000;');
+  assert.match(ties.impact, /not proven unique|does not define a total order/i);
+  assert.match(ties.remediation, /tiebreaker/i);
+
+  // A unique ordering earns the original advice unchanged.
+  const total = offset(
+    'SELECT o.order_id FROM shop.orders o ORDER BY o.created_at DESC, o.order_id DESC LIMIT 20 OFFSET 100000;',
+  );
+  assert.match(total.remediation, /over the complete deterministic ordering/);
+  assert.doesNotMatch(total.impact, /not proven unique/);
+});
+
 test('duplicate-sensitive aggregates are flagged beyond the additive ones', () => {
   const fanOut = (call: string) => `
     SELECT c.customer_id, ${call}

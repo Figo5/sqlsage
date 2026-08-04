@@ -99,6 +99,32 @@ interface ScannedArgs {
   positionals: string[];
 }
 
+/**
+ * Tokens that are not consumed as the value of a preceding value-taking flag.
+ *
+ * `--help`, `--version` and `--list` are recognised before the full parse so a
+ * malformed command line can still ask for them. Testing that with
+ * `args.includes(...)` also matched a token sitting in a value position, so
+ * `sqlsage analyze -q --version` printed the version banner instead of
+ * reporting that `-q` requires a value — the invocation was wrong and the user
+ * was told nothing.
+ *
+ * This does not validate; it only decides which tokens are the user's own
+ * words. `scanArgs` still does the real parse and still rejects a flag whose
+ * value is missing.
+ */
+function freeTokens(args: string[]): Set<string> {
+  const free = new Set<string>();
+  for (let i = 0; i < args.length; i++) {
+    if (VALUE_FLAGS.has(args[i]!)) {
+      i++; // the next token belongs to this flag, whatever it looks like
+      continue;
+    }
+    free.add(args[i]!);
+  }
+  return free;
+}
+
 function scanArgs(args: string[]): ScannedArgs {
   const values = new Map<string, string>();
   const switches = new Set<string>();
@@ -222,14 +248,16 @@ export function parseCliArgs(argv: string[], stdinIsTTY = true): CliOptions {
   }
   if (args[0] === 'doctor') {
     const rest = args.slice(1);
-    if (rest.includes('--help') || rest.includes('-h')) return { command: 'help' };
+    const doctorFree = freeTokens(rest);
+    if (doctorFree.has('--help') || doctorFree.has('-h')) return { command: 'help' };
     return parseDoctor(rest);
   }
   if (args[0] === 'analyze') args.shift();
 
-  if (args.includes('--help') || args.includes('-h')) return { command: 'help' };
-  if (args.includes('--version') || args.includes('-V')) return { command: 'version' };
-  if (args.includes('--list')) return { command: 'list' };
+  const free = freeTokens(args);
+  if (free.has('--help') || free.has('-h')) return { command: 'help' };
+  if (free.has('--version') || free.has('-V')) return { command: 'version' };
+  if (free.has('--list')) return { command: 'list' };
   if (args.length === 0 && stdinIsTTY) return { command: 'help' };
 
   const { values, switches, positionals } = scanArgs(args);

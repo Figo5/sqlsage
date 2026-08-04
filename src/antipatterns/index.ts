@@ -258,6 +258,7 @@ function detectDeepOffsets(ir: QueryIR, catalog: Catalog, sink: FindingSink): vo
     if (offset < threshold) continue;
     const largest = largestRelation(block, catalog);
     const order = block.orderBy.map((item) => `${item.sql} ${item.direction.toUpperCase()}`).join(', ');
+    const ordering = pagingOrderAssessment(block, catalog);
     const evidence = [
       order ? `ORDER BY ${order}` : undefined,
       block.limit !== undefined ? `LIMIT ${block.limit}` : undefined,
@@ -276,14 +277,74 @@ function detectDeepOffsets(ir: QueryIR, catalog: Catalog, sink: FindingSink): vo
         column: block.orderBy[0]?.column?.column,
       },
       impact:
-        `The executor must produce and discard at least ${formatRows(offset)} ordered rows before returning this page.` +
+        `The executor must produce and discard at least ${formatRows(offset)} ${order ? 'ordered ' : ''}rows before returning this page.` +
         (largest?.rowCount !== undefined ? ` The largest input relation has about ${formatRows(largest.rowCount)} catalog-estimated rows.` : '') +
-        ' Work grows linearly with page depth even when a matching ordering index exists.',
-      remediation: 'Use cursor/seek pagination over the complete deterministic ordering when the product does not require arbitrary page jumps.',
+        ' Work grows linearly with page depth even when a matching ordering index exists.' +
+        ordering.impact,
+      remediation: ordering.remediation,
       caveat: 'OFFSET remains appropriate for shallow pages or true random page access; seek pagination changes the API and its concurrent-update behavior.',
       confidence: 'high',
     });
   }
+}
+
+/**
+ * What the block's ordering permits us to say about paging.
+ *
+ * Seek pagination needs a *total* order: without one there is no cursor to
+ * carry. The finding used to assert "discard N ordered rows" and prescribe
+ * "cursor/seek pagination over the complete deterministic ordering" whatever
+ * the query said — including for `OFFSET 100000` with no `ORDER BY` at all,
+ * where neither the ordered rows nor the deterministic ordering exist.
+ *
+ * Without any ordering the deeper problem is not cost: `LIMIT/OFFSET` over an
+ * unordered result may return rows that overlap or skip between pages, and can
+ * differ run to run. That is a correctness issue and the finding said nothing
+ * about it.
+ */
+function pagingOrderAssessment(
+  block: QueryBlockIR,
+  catalog: Catalog,
+): { impact: string; remediation: string } {
+  if (!block.orderBy.length) {
+    return {
+      impact:
+        ' This block has no ORDER BY, so the rows being skipped are not in any promised order:' +
+        ' PostgreSQL may return overlapping or missing rows across pages, and a different set on a rerun.',
+      remediation:
+        'Add a deterministic ORDER BY before treating this as pagination at all — without one the page boundaries are not' +
+        ' reproducible. Seek pagination then becomes possible over that ordering; it cannot be applied to an unordered result.',
+    };
+  }
+
+  const refs = block.orderBy.map((item) => item.column);
+  const table = refs[0]?.table;
+  const total = !!table
+    && refs.every((ref) => ref && ref.table === table && !ref.unresolved)
+    && orderingIsTotal(catalog, table, refs.map((ref) => ref!.column));
+  if (total) {
+    return {
+      impact: '',
+      remediation:
+        'Use cursor/seek pagination over the complete deterministic ordering when the product does not require arbitrary page jumps.',
+    };
+  }
+  return {
+    impact:
+      ' The ORDER BY is not proven unique, so it does not define a total order: rows sharing a key can be' +
+      ' returned in a different arrangement between pages, and no single cursor value identifies a boundary.',
+    remediation:
+      'Extend the ORDER BY with a tiebreaker that makes it unique (a primary key works), then use cursor/seek pagination' +
+      ' over that complete ordering. A seek cursor cannot be formed while the ordering has ties.',
+  };
+}
+
+/** True when some declared key proves the ordering columns identify a row. */
+function orderingIsTotal(catalog: Catalog, tableName: string, columns: string[]): boolean {
+  const table = findTable(catalog, tableName);
+  if (!table) return false;
+  const covers = (key: string[] | undefined) => !!key?.length && key.every((column) => columns.includes(column));
+  return covers(table.primaryKey) || table.indexes.some((index) => index.unique && !index.where && covers(index.columns));
 }
 
 function detectRepeatedCorrelatedAggregates(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {

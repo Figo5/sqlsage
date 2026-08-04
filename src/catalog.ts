@@ -127,7 +127,7 @@ export async function introspect(client: pg.Client, schema = 'shop'): Promise<Ca
       const freqs: number[] | null = r.most_common_freqs;
       let mostCommonValues;
       if (mcvRaw && freqs) {
-        const vals = mcvRaw.replace(/^\{|\}$/g, '').split(',').map((v) => v.replace(/^"|"$/g, ''));
+        const vals = parsePgArrayLiteral(mcvRaw);
         mostCommonValues = vals
           .map((value, i) => ({ value, frequency: freqs[i] }))
           .filter((m) => m.frequency !== undefined)
@@ -199,6 +199,54 @@ export class CatalogInputError extends Error {
     super(message);
     this.name = 'CatalogInputError';
   }
+}
+
+/**
+ * Split one PostgreSQL array literal (`most_common_vals::text`) into elements.
+ *
+ * Splitting on `,` corrupts every value that contains one. PostgreSQL quotes
+ * such elements, so `{"Smith, John",Doe}` is two values — the naive split made
+ * it three, and `"Smith` and ` John"` then stood in for a most-common value in
+ * every selectivity estimate derived from that column.
+ *
+ * Inside a quoted element, `\` escapes the next character; outside one, a comma
+ * separates. Unquoted `NULL` is the SQL null element and is dropped, since a
+ * most-common *value* list has no use for it.
+ */
+export function parsePgArrayLiteral(raw: string): string[] {
+  const body = raw.replace(/^\{/, '').replace(/\}$/, '');
+  if (body === '') return [];
+  const out: string[] = [];
+  let current = '';
+  let quoted = false;
+  let wasQuoted = false;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]!;
+    if (quoted) {
+      if (ch === '\\') {
+        current += body[++i] ?? '';
+      } else if (ch === '"') {
+        quoted = false;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      quoted = true;
+      wasQuoted = true;
+      continue;
+    }
+    if (ch === ',') {
+      if (wasQuoted || current !== 'NULL') out.push(current);
+      current = '';
+      wasQuoted = false;
+      continue;
+    }
+    current += ch;
+  }
+  if (wasQuoted || current !== 'NULL') out.push(current);
+  return out;
 }
 
 function record(value: unknown): value is Record<string, unknown> {

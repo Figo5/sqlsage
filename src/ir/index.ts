@@ -145,7 +145,19 @@ class Binder {
     try {
       statements = parse(this.sql, { locationTracking: true });
     } catch (e) {
-      this.error(`could not parse the statement: ${(e as Error).message.split('\n')[0]}`, undefined, 'error');
+      const detail = (e as Error).message.split('\n')[0];
+      const unsupported = unsupportedConstruct(this.sql);
+      this.error(
+        unsupported
+          // Blaming the user's SQL for a gap in this tool is the `doctor` failure
+          // recorded in docs/LIMITATIONS.md: a check that cannot tell a failure
+          // from its own defect will point at the wrong thing. The statement below
+          // is valid PostgreSQL; SQLSage is what cannot read it.
+          ? `${unsupported} is valid PostgreSQL that SQLSage's parser does not yet support, so this statement could not be analyzed. This is a SQLSage limitation, not an error in the query (parser detail: ${detail})`
+          : `could not parse the statement: ${detail}`,
+        undefined,
+        'error',
+      );
       return this.emptyIR('other');
     }
 
@@ -1726,6 +1738,24 @@ function joinType(t: JoinClause['type']): JoinIR['type'] {
     default:
       return 'inner';
   }
+}
+
+/**
+ * Names a construct SQLSage cannot parse but PostgreSQL accepts, so the failure
+ * can be reported as this tool's limitation rather than as the user's mistake.
+ *
+ * Only consulted after the parse has already failed, and matched loosely on
+ * purpose: it exists to label a failure, never to reject anything.
+ */
+function unsupportedConstruct(sql: string): string | undefined {
+  const known: Array<[RegExp, string]> = [
+    [/\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b/i, 'IS [NOT] DISTINCT FROM'],
+    [/\bGROUPING\s+SETS\s*\(/i, 'GROUPING SETS'],
+    [/\bCUBE\s*\(/i, 'CUBE'],
+    [/\bROLLUP\s*\(/i, 'ROLLUP'],
+    [/\bFETCH\s+(?:FIRST|NEXT)\b/i, 'FETCH FIRST/NEXT'],
+  ];
+  return known.find(([pattern]) => pattern.test(sql))?.[1];
 }
 
 function statementTypeOf(stmt: Statement): QueryIR['statementType'] {

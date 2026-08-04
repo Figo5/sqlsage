@@ -12,6 +12,10 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
+  // Contributor-facing docs that stay in the repo (and in this tree) but are
+  // deliberately excluded from the public site: neither linked nor searchable.
+  srcExclude: ['PRODUCT-ROADMAP.md', 'AUDIT-2026-08-03.md'],
+
   // Note: the pre-existing docs keep their filenames (and thus their default,
   // uppercase routes) — /ARCHITECTURE, /SUPPORTED, /LIMITATIONS, /USAGE,
   // /AUDIT-2026-08-03, /PRODUCT-ROADMAP — so their internal relative .md links
@@ -77,13 +81,11 @@ export default defineConfig({
           { text: 'Supported constructs', link: '/SUPPORTED' },
           { text: 'Limitations & known gaps', link: '/LIMITATIONS' },
           { text: 'Usage & inputs', link: '/USAGE' },
-          { text: '2026-08 adversarial audit', link: '/AUDIT-2026-08-03' },
         ],
       },
       {
         text: 'Project',
         items: [
-          { text: 'Roadmap', link: '/PRODUCT-ROADMAP' },
           { text: 'GitHub', link: repoUrl },
           { text: 'npm package', link: npmUrl },
           { text: 'Releases', link: releaseUrl },
