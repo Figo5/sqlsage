@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/sqlsage)](https://www.npmjs.com/package/sqlsage)
 [![CI](https://github.com/Figo5/sqlsage/actions/workflows/ci.yml/badge.svg)](https://github.com/Figo5/sqlsage/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/Figo5/sqlsage)](https://github.com/Figo5/sqlsage/releases/latest)
+[![Docs](https://img.shields.io/badge/docs-figo5.github.io%2Fsqlsage-3fb950)](https://figo5.github.io/sqlsage/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 SQLSage is a command-line PostgreSQL query explainer and optimizer. Give it a
