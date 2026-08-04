@@ -367,3 +367,36 @@ test('compare reports a missing plan file with a corrective command', () => {
 test('help documents compare', () => {
   assert.match(run(['--help']).stdout, /sqlsage compare --before/);
 });
+
+test('a defect in SQLSage is not reported as a problem with the user input', async () => {
+  // Every unclassified failure used to be labelled `input error`, so an
+  // internal fault told the user their input was wrong and sent them to run
+  // doctor on a file that was fine — the same failure shape as the doctor bug
+  // in docs/LIMITATIONS.md. See docs/AUDIT-2026-08-03.md.
+  const { runCli } = await import('./cli.ts');
+  const sink = () => {
+    let text = '';
+    return { write(chunk: string) { text += chunk; return true; }, read: () => text };
+  };
+  const stderr = sink();
+  const stdout = sink();
+
+  // A TypeError raised inside the run is a programming error, not user input.
+  const exploding = {
+    stdout: Object.assign(stdout, { isTTY: false }),
+    stderr,
+    get stdin(): never { throw new TypeError('exploded while reading stdin'); },
+  };
+  const code = await runCli(['analyze', '--sql', 'SELECT 1', '--catalog', 'x.json'], exploding as never);
+
+  assert.equal(code, 1);
+  assert.match(stderr.read(), /internal error/);
+  assert.match(stderr.read(), /defect in SQLSage, not a problem with your input/);
+  assert.match(stderr.read(), /github\.com\/Figo5\/sqlsage\/issues/);
+  assert.doesNotMatch(stderr.read(), /^sqlsage: input error/m);
+
+  // A genuinely missing input file is still reported as an input problem.
+  const missing = run(['analyze', '--sql', 'SELECT 1', '--catalog', '/nope/missing.json']);
+  assert.doesNotMatch(missing.stderr, /internal error/);
+  assert.match(missing.stderr, /no such file or directory/);
+});

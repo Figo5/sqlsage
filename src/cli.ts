@@ -317,6 +317,40 @@ function writeFailure(io: CliIo, message: string, fix: string | undefined): numb
   return 1;
 }
 
+/**
+ * A defect in SQLSage rather than a problem with what the user supplied.
+ *
+ * The JavaScript runtime raises these for programming errors: a property read
+ * on undefined, a bad argument to a built-in, a missing binding. No input the
+ * CLI accepts should be able to produce one — if it does, that is a bug here.
+ *
+ * The distinction is the point. Every unclassified failure used to be labelled
+ * `input error`, so an internal fault told the user their input was wrong and
+ * sent them off to run `doctor` on a file that was fine. That is the same
+ * failure recorded in docs/LIMITATIONS.md, where `doctor` blamed a user's
+ * install for a path bug in this tool: a check that cannot distinguish a
+ * failure from its own defect will point at the wrong thing.
+ */
+function isInternalFault(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // A system error carries a code (ENOENT, ECONNREFUSED, ...) and describes
+  // something about the environment, not about this program's logic.
+  if (typeof error === 'object' && 'code' in error && error.code !== undefined) return false;
+  return error instanceof TypeError
+    || error instanceof RangeError
+    || error instanceof ReferenceError
+    || error instanceof SyntaxError;
+}
+
+function writeInternalFault(io: CliIo, message: string): number {
+  io.stderr.write(
+    `sqlsage: internal error: ${message}\n` +
+      'This is a defect in SQLSage, not a problem with your input. Please report it at\n' +
+      'https://github.com/Figo5/sqlsage/issues with the query and the command you ran.\n',
+  );
+  return 1;
+}
+
 async function runDemo(options: DemoCliOptions, io: CliIo): Promise<number> {
   const query = CORPUS.find((entry) => entry.id.startsWith(DEMO_CORPUS_ID));
   if (!query) throw new CliUsageError(`the bundled example ${DEMO_CORPUS_ID} is missing; reinstall sqlsage`);
@@ -400,8 +434,9 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
     ) {
       return writeFailure(io, error.message, correctiveCommand(error, options));
     }
-    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined;
     const message = error instanceof Error ? error.message : String(error);
+    if (isInternalFault(error)) return writeInternalFault(io, message);
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined;
     const prefix = code === 'ENOENT' ? 'file not found' : 'input error';
     return writeFailure(io, `${prefix}: ${message}`, correctiveCommand(error, options));
   }
