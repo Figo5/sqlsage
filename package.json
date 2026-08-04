@@ -45,7 +45,8 @@
     "groundtruth": "node eval/collect-groundtruth.ts",
     "test": "node --test src/*.test.ts src/**/*.test.ts",
     "test:install": "node eval/install-smoke.ts",
-    "check": "npm test && node eval/dump-ir.ts --check && node eval/run.ts && npm run build"
+    "validate": "node eval/validate-predictions.ts",
+    "check": "npm test && node eval/dump-ir.ts --check && node eval/run.ts && npm run validate && npm run build && npm run test:install"
   },
   "dependencies": {
     "pgsql-ast-parser": "^12.0.2",

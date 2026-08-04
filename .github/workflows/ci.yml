@@ -28,6 +28,10 @@ jobs:
       - run: npm test
       - run: node eval/dump-ir.ts --check
       - run: node eval/run.ts
+      # eval/run.ts checks that the analyzer composes; this checks that what it
+      # predicts still matches EXPLAIN ANALYZE. Without it a change could break
+      # every row estimate in the tool and every suite above would stay green.
+      - run: npm run validate
       - run: npm run build
       - run: npm run test:install
       # The commands a new user runs first, and the exact three that were broken on

@@ -38,6 +38,7 @@ jobs:
       - run: npm test
       - run: node eval/dump-ir.ts --check
       - run: node eval/run.ts
+      - run: npm run validate
       - run: npm run build
       - run: npm run test:install
       - name: Build release package
