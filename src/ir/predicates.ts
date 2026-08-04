@@ -160,7 +160,7 @@ function classify(expr: Expr, ctx: PredicateContext): { kind: PredicateKind; neg
         if (isJoinShaped(expr, ctx)) return { kind: 'join', negated: false };
         return { kind: 'range', negated: false };
       }
-      if (NON_BTREE_INDEXABLE[op]) return { kind: 'other', negated: false };
+      if (NON_BTREE_INDEXABLE[op]) return { kind: 'containment', negated: false };
       return { kind: 'other', negated: false };
     }
     case 'ternary': {

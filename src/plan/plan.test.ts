@@ -166,3 +166,64 @@ test('a constant equality collapses the grouped output estimate to a single row'
   assert.ok(!fixed.dominantCosts.some((cost) => /Order all result candidates/.test(cost.what)), 'fixed group needs no full sort');
 });
 
+// ---------------------------------------------------------------------------
+// An index leading with the right column is not enough — the method has to
+// implement the operator. Expectations below were taken from PostgreSQL 16.14
+// on a 200k-row table, not from the manual. See docs/AUDIT-2026-08-03.md P0-3.
+// ---------------------------------------------------------------------------
+
+function withIndex(table: string, index: Record<string, unknown>): Catalog {
+  const clone = structuredClone(catalog);
+  (clone.tables.find((candidate) => candidate.name === table)!.indexes as unknown[]).push(index);
+  return clone;
+}
+
+function pathFor(sql: string, source: Catalog) {
+  return predictExecution(bindQuery(sql, source), source).accessPaths[0]!;
+}
+
+test('a hash index is not credited with serving a range scan', () => {
+  // PostgreSQL 16.14 answers `total_cents > 5000` with a Seq Scan; the hash
+  // index is not used at all, because hash implements equality only.
+  const source = withIndex('orders', {
+    name: 'idx_orders_total_hash', table: 'orders', columns: ['total_cents'],
+    unique: false, method: 'hash',
+  });
+  const range = pathFor('SELECT o.order_id FROM shop.orders o WHERE o.total_cents > 5000;', source);
+  assert.equal(range.path, 'seq-scan');
+  assert.equal(range.usingIndex, undefined);
+  // Reporting "no index begins with that column" would be false and would send
+  // the reader to create an index they already have.
+  assert.match(range.reason, /is a HASH index, which does not implement/);
+  assert.doesNotMatch(range.reason, /no existing index begins/);
+
+  // The same index under equality is genuinely usable.
+  const equality = pathFor('SELECT o.order_id FROM shop.orders o WHERE o.total_cents = 700;', source);
+  assert.equal(equality.usingIndex, 'idx_orders_total_hash');
+});
+
+test('a GIN index is credited for the containment operator it exists to serve', () => {
+  const source = withIndex('events', {
+    name: 'idx_events_payload_gin', table: 'events', columns: ['payload'],
+    unique: false, method: 'gin',
+  });
+  const path = pathFor(
+    `SELECT e.event_id FROM shop.events e WHERE e.payload @> '{"utm_source":"ads"}';`,
+    source,
+  );
+  assert.equal(path.usingIndex, 'idx_events_payload_gin');
+  // GIN reaches the heap through a bitmap and cannot drive an index-only scan.
+  assert.equal(path.path, 'bitmap-heap-scan');
+  assert.match(path.reason, /no ordered entries and no visibility-map support/);
+});
+
+test('a containment predicate is classified apart from unrecognised shapes', () => {
+  const ir = bindQuery(
+    `SELECT e.event_id FROM shop.events e WHERE e.payload @> '{"a":1}';`,
+    catalog,
+  );
+  const predicate = ir.blocks[0]!.relations[0]!.localPredicates[0]!;
+  assert.equal(predicate.kind, 'containment');
+  assert.equal(predicate.sargable, true);
+});
+

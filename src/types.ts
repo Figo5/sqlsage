@@ -127,6 +127,14 @@ export type PredicateKind =
   | 'null-check'
   | 'boolean'
   | 'join'
+  /**
+   * A containment, overlap, key-existence, or full-text operator (`@>`, `<@`,
+   * `?`, `?|`, `?&`, `&&`, `@@`). Separated from `other` because these are
+   * indexable — a GIN or GiST index answers them directly — while a btree never
+   * can. Folded into `other`, the fact that an applicable index exists is
+   * indistinguishable from an unrecognised predicate shape.
+   */
+  | 'containment'
   | 'subquery'
   | 'other';
 

@@ -12,6 +12,12 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
+  // Note: the pre-existing docs keep their filenames (and thus their default,
+  // uppercase routes) — /ARCHITECTURE, /SUPPORTED, /LIMITATIONS, /USAGE,
+  // /AUDIT-2026-08-03, /PRODUCT-ROADMAP — so their internal relative .md links
+  // keep resolving without editing those files. A lowercase-route rename can be
+  // done later as its own commit.
+
   head: [
     ['meta', { name: 'theme-color', content: '#3fb950' }],
     ['meta', { property: 'og:title', content: 'SQLSage' }],
@@ -63,21 +69,21 @@ export default defineConfig({
       },
       {
         text: 'Concepts',
-        items: [{ text: 'Architecture', link: '/architecture' }],
+        items: [{ text: 'Architecture', link: '/ARCHITECTURE' }],
       },
       {
         text: 'Reference',
         items: [
-          { text: 'Supported constructs', link: '/supported' },
-          { text: 'Limitations & known gaps', link: '/limitations' },
-          { text: 'Usage & inputs', link: '/usage' },
-          { text: '2026-08 adversarial audit', link: '/audit-2026-08-03' },
+          { text: 'Supported constructs', link: '/SUPPORTED' },
+          { text: 'Limitations & known gaps', link: '/LIMITATIONS' },
+          { text: 'Usage & inputs', link: '/USAGE' },
+          { text: '2026-08 adversarial audit', link: '/AUDIT-2026-08-03' },
         ],
       },
       {
         text: 'Project',
         items: [
-          { text: 'Roadmap', link: '/product-roadmap' },
+          { text: 'Roadmap', link: '/PRODUCT-ROADMAP' },
           { text: 'GitHub', link: repoUrl },
           { text: 'npm package', link: npmUrl },
           { text: 'Releases', link: releaseUrl },

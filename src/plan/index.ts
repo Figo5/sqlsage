@@ -108,19 +108,31 @@ function decidePath(block: QueryBlockIR, relation: RelationIR, catalog: Catalog)
   const candidates = usablePredicateIndexes(relation, catalog);
   if (candidates.length) {
     const candidate = candidates[0]!;
-    const covered = indexCoversBlock(candidate.index, block, relation.alias);
+    // GIN and BRIN have no ordered entries and no visibility-map support: both
+    // reach the heap through a bitmap, and neither can drive an index-only
+    // scan. Confirmed on PostgreSQL 16.14 (see METHOD_SERVES).
+    const bitmapOnly = candidate.index.method === 'gin' || candidate.index.method === 'brin';
+    const covered = !bitmapOnly && indexCoversBlock(candidate.index, block, relation.alias);
     const broad = candidate.predicate.kind === 'range' || candidate.predicate.kind === 'in-list' ||
       (estimatedRows !== undefined && table.rowCount !== undefined && estimatedRows / table.rowCount > 0.05);
     const path: AccessPath = covered
       ? 'index-only-scan'
-      : broad && (estimatedRows === undefined || estimatedRows > 5_000)
+      : bitmapOnly || (broad && (estimatedRows === undefined || estimatedRows > 5_000))
         ? 'bitmap-heap-scan'
         : 'index-scan';
     return {
       path,
       index: candidate.index,
       estimatedRows,
-      reason: `${predictionPrefix(path)} ${code(candidate.predicate.sql)} can use leading key ${code(candidate.column.column)} of ${code(candidate.index.name)}.${covered ? ' Every referenced column in this block is stored by that index, although visibility-map coverage still decides whether heap visits are avoided.' : broad ? ' A bitmap path is plausible because the range or match count may touch many scattered heap rows; a simple index path remains possible at lower selectivity.' : ' The matching set appears selective enough for direct lookups, but the planner can still prefer a sequential read when the estimate grows.'}`,
+      reason: `${predictionPrefix(path)} ${code(candidate.predicate.sql)} can use leading key ${code(candidate.column.column)} of ${code(candidate.index.name)}.${
+        covered
+          ? ' Every referenced column in this block is stored by that index, although visibility-map coverage still decides whether heap visits are avoided.'
+          : bitmapOnly
+            ? ` A ${candidate.index.method.toUpperCase()} index has no ordered entries and no visibility-map support, so matches are collected into a bitmap and the heap is visited in physical order; an index-only path is not available.`
+            : broad
+              ? ' A bitmap path is plausible because the range or match count may touch many scattered heap rows; a simple index path remains possible at lower selectivity.'
+              : ' The matching set appears selective enough for direct lookups, but the planner can still prefer a sequential read when the estimate grows.'
+      }`,
     };
   }
 
@@ -154,11 +166,18 @@ function decidePath(block: QueryBlockIR, relation: RelationIR, catalog: Catalog)
   }
 
   const nonSargable = relation.localPredicates.filter((predicate) => !predicate.sargable);
+  // An index can lead with the right column and still be unusable because its
+  // method does not implement the operator — a hash index under a range test,
+  // for one. Saying "no index begins with their referenced columns" there is
+  // false and sends the reader off to create an index that already exists.
+  const wrongMethod = mismatchedLeadingIndexes(relation, catalog);
   const reason = nonSargable.length
     ? `Offline prediction: no existing leading-key access path can evaluate ${naturalList(nonSargable.map((predicate) => code(predicate.sql)))} as a seek, so PostgreSQL is likely to read ${formatRows(table.rowCount, relation.source)} and apply the condition to rows. A live EXPLAIN is required to confirm parallelism.`
-    : relation.localPredicates.length
-      ? `Offline prediction: the row conditions are structurally seekable in isolation, but no existing index begins with their referenced columns. Reading ${formatRows(table.rowCount, relation.source)} is therefore the leading candidate.`
-      : `Offline prediction: no local condition narrows ${code(relation.source)} and no small-driver lookup is established, so a sequential read of ${formatRows(table.rowCount, relation.source)} is the conservative candidate.`;
+    : wrongMethod.length
+      ? `Offline prediction: ${naturalList(wrongMethod.map(({ index, predicate }) => `${code(index.name)} leads with ${code(index.columns[0]!)} but is a ${index.method.toUpperCase()} index, which does not implement ${code(predicate.sql)}`))}. PostgreSQL cannot use ${wrongMethod.length > 1 ? 'those indexes' : 'that index'} for this condition and is likely to read ${formatRows(table.rowCount, relation.source)} instead. A method that supports this operator would be required, not merely an index on the same column.`
+      : relation.localPredicates.length
+        ? `Offline prediction: the row conditions are structurally seekable in isolation, but no existing index begins with their referenced columns. Reading ${formatRows(table.rowCount, relation.source)} is therefore the leading candidate.`
+        : `Offline prediction: no local condition narrows ${code(relation.source)} and no small-driver lookup is established, so a sequential read of ${formatRows(table.rowCount, relation.source)} is the conservative candidate.`;
   return { path: 'seq-scan', estimatedRows, reason };
 }
 
@@ -180,6 +199,58 @@ function bulkJoinPressure(block: QueryBlockIR, relation: RelationIR, catalog: Ca
   return undefined;
 }
 
+/**
+ * Which predicate shapes each index method can actually answer.
+ *
+ * An index leading with the right column is not enough: the method has to
+ * support the operator. Admitting only btree and hash, and never consulting the
+ * predicate kind, produced claims in both directions — a hash index credited
+ * with serving a range scan, which PostgreSQL answers with a sequential scan,
+ * and a GIN index ignored for the containment operator it exists to serve, with
+ * the report stating no index begins with that column when one does.
+ *
+ * Checked on PostgreSQL 16.14 against a 200k-row table (`EXPLAIN` node in
+ * brackets):
+ *   hash + `>`      -> Seq Scan; the index is not used at all
+ *   hash + `=`      -> [Index Scan]
+ *   hash + `IN`     -> [Bitmap Index Scan]; hash does serve ScalarArrayOp
+ *   gin  + `@>`     -> [Bitmap Index Scan]
+ *   brin + BETWEEN  -> [Bitmap Index Scan]
+ *
+ * GiST and SP-GiST entries are the conservative subset of what their standard
+ * operator classes support; they were not exercised above, so nothing is
+ * claimed for them beyond containment- and range-style operators.
+ */
+const METHOD_SERVES: Record<IndexDef['method'], Set<Predicate['kind']>> = {
+  btree: new Set(['equality', 'in-list', 'range', 'like-prefix', 'null-check', 'join']),
+  hash: new Set(['equality', 'in-list', 'join']),
+  brin: new Set(['equality', 'range']),
+  gin: new Set(['containment']),
+  gist: new Set(['containment', 'range']),
+  spgist: new Set(['containment', 'range', 'like-prefix']),
+};
+
+/**
+ * Indexes that lead with a predicate's column but whose method cannot answer
+ * it. These are the near misses worth naming: the reader has the column
+ * indexed already, and needs to know the method is the problem.
+ */
+function mismatchedLeadingIndexes(
+  relation: RelationIR,
+  catalog: Catalog,
+): Array<{ predicate: Predicate; index: IndexDef }> {
+  const out: Array<{ predicate: Predicate; index: IndexDef }> = [];
+  for (const predicate of relation.localPredicates) {
+    if (!predicate.sargable) continue;
+    const column = predicate.columns.find((item) => item.alias === relation.alias && item.table === relation.source);
+    if (!column) continue;
+    for (const index of indexesLeadingWith(catalog, relation.source, column.column)) {
+      if (!METHOD_SERVES[index.method]?.has(predicate.kind)) out.push({ predicate, index });
+    }
+  }
+  return out;
+}
+
 function usablePredicateIndexes(
   relation: RelationIR,
   catalog: Catalog,
@@ -190,13 +261,13 @@ function usablePredicateIndexes(
     const column = predicate.columns.find((item) => item.alias === relation.alias && item.table === relation.source);
     if (!column) continue;
     for (const index of indexesLeadingWith(catalog, relation.source, column.column)) {
-      if (index.method !== 'btree' && index.method !== 'hash') continue;
+      if (!METHOD_SERVES[index.method]?.has(predicate.kind)) continue;
       out.push({ predicate, column, index });
     }
   }
   const rank: Record<Predicate['kind'], number> = {
-    equality: 0, 'in-list': 1, range: 2, 'like-prefix': 3, join: 4,
-    'null-check': 5, boolean: 6, subquery: 7, 'like-infix': 8, other: 9,
+    equality: 0, 'in-list': 1, range: 2, containment: 3, 'like-prefix': 4, join: 5,
+    'null-check': 6, boolean: 7, subquery: 8, 'like-infix': 9, other: 10,
   };
   return out.sort((a, b) => rank[a.predicate.kind] - rank[b.predicate.kind]);
 }
