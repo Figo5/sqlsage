@@ -792,6 +792,76 @@ class Binder {
    * proven from the catalog (primary key / unique index) or, for a derived
    * table, from its own GROUP BY or DISTINCT.
    */
+  /**
+   * Fan-out for a correlated LATERAL, or `undefined` when the right side is not
+   * one.
+   *
+   * A correlated LATERAL spells its join condition inside its own block, so the
+   * outer ON reads `ON true` and only *looks* keyless. Treating that as keyless
+   * claims the lateral's own rows are multiplied, which is a false positive: an
+   * aggregate over them is correct whenever the outer side is unique on the
+   * correlation key. Recover the keys and reason as the equivalent plain join.
+   *
+   * Reached from two places. `CROSS JOIN LATERAL` is spelled as a cross join and
+   * used to be answered by the unconditional cross-join rule before any of this
+   * could run, so a lateral keyed on the outer relation's primary key — exactly
+   * one row per outer row, no fan-out at all — was still reported as multiplying
+   * every relation in the query.
+   */
+  private lateralFanOut(
+    right: BoundRelation,
+    previous: BoundRelation[],
+  ): { fanOut: boolean; reason: string; side: JoinIR['fanOutSide']; multiplied: string[] } | undefined {
+    const corr = this.lateralCorrelation(right, previous);
+    if (corr) {
+      const leftInput = previous.map((p) => p.alias);
+      const leftProof = this.proveLeftUnique(previous, corr.keys, corr.leftAlias);
+      const perOuter = corr.atMostOnePerOuterRow;
+      if (perOuter && leftProof.unique) {
+        return {
+          fanOut: false,
+          side: 'none',
+          multiplied: [],
+          reason:
+            `the lateral is correlated on ${corr.description}, ${corr.uniqueReason}, and ${leftProof.reason}, ` +
+            'so this join cannot multiply rows on either side.',
+        };
+      }
+      if (perOuter) {
+        return {
+          fanOut: true,
+          side: 'right',
+          multiplied: [right.alias],
+          reason:
+            `the lateral is correlated on ${corr.description} and ${corr.uniqueReason}, so no left row is duplicated — ` +
+            `but ${leftProof.reason}, so each ${right.alias} row is re-derived once per matching left row. ` +
+            `An aggregate over ${right.alias}'s columns is therefore over-counted.`,
+        };
+      }
+      if (leftProof.unique) {
+        return {
+          fanOut: true,
+          side: 'left',
+          multiplied: leftInput,
+          reason:
+            `the lateral is correlated on ${corr.description} and can return more than one row per left row, ` +
+            `so left rows are multiplied. The left input is unique on the correlation key ` +
+            `(${leftProof.via ?? 'proven'}), so ${right.alias}'s rows are not re-derived for a second left row — ` +
+            `an aggregate over ${right.alias}'s columns is not over-counted.`,
+        };
+      }
+      return {
+        fanOut: true,
+        side: 'both',
+        multiplied: [...leftInput, right.alias],
+        reason:
+          `the lateral is correlated on ${corr.description}, can return more than one row per left row, and ` +
+          'the left input is not unique on the correlation key, so rows multiply in both directions.',
+      };
+    }
+    return undefined;
+  }
+
   private computeFanOut(
     type: JoinIR['type'],
     right: BoundRelation,
@@ -813,6 +883,11 @@ class Binder {
             'so pairing it with each left row cannot multiply a left row.',
         };
       }
+      // CROSS JOIN LATERAL is spelled as a cross join but is not one: its join
+      // condition lives inside the subquery. Answering it with the rule below
+      // asserts an unconditional fan-out that may not exist.
+      const lateral = this.lateralFanOut(right, previous);
+      if (lateral) return lateral;
       const n = right.table?.rowCount;
       return {
         fanOut: true,
@@ -832,58 +907,8 @@ class Binder {
             'so this join cannot match more than one right row per left row even without an equality key.',
         };
       }
-      // A correlated LATERAL spells its join condition inside its own block, so the
-      // outer ON reads `ON true` and only *looks* keyless. Treating that as keyless
-      // claims the lateral's own rows are multiplied, which is a false positive: an
-      // aggregate over them is correct whenever the outer side is unique on the
-      // correlation key. Recover the keys and reason as the equivalent plain join.
-      const corr = this.lateralCorrelation(right, previous);
-      if (corr) {
-        const leftInput = previous.map((p) => p.alias);
-        const leftProof = this.proveLeftUnique(previous, corr.keys, corr.leftAlias);
-        const perOuter = corr.atMostOnePerOuterRow;
-        if (perOuter && leftProof.unique) {
-          return {
-            fanOut: false,
-            side: 'none',
-            multiplied: [],
-            reason:
-              `the lateral is correlated on ${corr.description}, ${corr.uniqueReason}, and ${leftProof.reason}, ` +
-              'so this join cannot multiply rows on either side.',
-          };
-        }
-        if (perOuter) {
-          return {
-            fanOut: true,
-            side: 'right',
-            multiplied: [right.alias],
-            reason:
-              `the lateral is correlated on ${corr.description} and ${corr.uniqueReason}, so no left row is duplicated — ` +
-              `but ${leftProof.reason}, so each ${right.alias} row is re-derived once per matching left row. ` +
-              `An aggregate over ${right.alias}'s columns is therefore over-counted.`,
-          };
-        }
-        if (leftProof.unique) {
-          return {
-            fanOut: true,
-            side: 'left',
-            multiplied: leftInput,
-            reason:
-              `the lateral is correlated on ${corr.description} and can return more than one row per left row, ` +
-              `so left rows are multiplied. The left input is unique on the correlation key ` +
-              `(${leftProof.via ?? 'proven'}), so ${right.alias}'s rows are not re-derived for a second left row — ` +
-              `an aggregate over ${right.alias}'s columns is not over-counted.`,
-          };
-        }
-        return {
-          fanOut: true,
-          side: 'both',
-          multiplied: [...leftInput, right.alias],
-          reason:
-            `the lateral is correlated on ${corr.description}, can return more than one row per left row, and ` +
-            'the left input is not unique on the correlation key, so rows multiply in both directions.',
-        };
-      }
+      const lateral = this.lateralFanOut(right, previous);
+      if (lateral) return lateral;
 
       return {
         fanOut: true,

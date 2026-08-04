@@ -217,6 +217,40 @@ test('a GIN index is credited for the containment operator it exists to serve', 
   assert.match(path.reason, /no ordered entries and no visibility-map support/);
 });
 
+test('CROSS JOIN LATERAL is not assumed to fan out', () => {
+  const join = (sql: string) => bindQuery(sql, catalog).blocks[0]!.joins[0]!;
+
+  // The lateral is keyed on the outer relation's primary key and returns at
+  // most one row per outer row, so nothing is multiplied. CROSS JOIN LATERAL is
+  // spelled as a cross join but is not one: its condition lives inside the
+  // subquery, and the unconditional cross-join rule used to answer it first.
+  const none = join(`
+    SELECT c.customer_id, x.email FROM shop.customers c
+    CROSS JOIN LATERAL (
+      SELECT c2.email FROM shop.customers c2 WHERE c2.customer_id = c.customer_id
+    ) x;`);
+  assert.equal(none.fanOut, false);
+  assert.equal(none.fanOutSide, 'none');
+  assert.deepEqual(none.multipliedRelations ?? [], []);
+
+  // A lateral that can return many rows per outer row does multiply the left
+  // input — the correlation key is not unique on orders.
+  const left = join(`
+    SELECT c.customer_id, x.order_id FROM shop.customers c
+    CROSS JOIN LATERAL (
+      SELECT o.order_id FROM shop.orders o WHERE o.customer_id = c.customer_id
+    ) x;`);
+  assert.equal(left.fanOut, true);
+  assert.equal(left.fanOutSide, 'left');
+  assert.deepEqual(left.multipliedRelations, ['c']);
+
+  // A genuine cross join still multiplies unconditionally.
+  const cross = join('SELECT c.customer_id, p.product_id FROM shop.customers c CROSS JOIN shop.products p;');
+  assert.equal(cross.fanOut, true);
+  assert.equal(cross.fanOutSide, 'both');
+  assert.match(cross.fanOutReason ?? '', /multiplies unconditionally/);
+});
+
 test('a HAVING aggregate is never pushed into the scan, whatever the function', () => {
   // The aggregate's argument is the grouping key, so the "every column is
   // grouped" test passes and only the aggregate guard stands between this
