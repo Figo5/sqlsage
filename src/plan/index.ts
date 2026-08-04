@@ -55,9 +55,10 @@ export function predictExecution(ir: QueryIR, catalog: Catalog): ExecutionAnalys
 
   const accessPaths = predictAccessPaths(ir, catalog);
   const correlated = correlatedWork(ir, catalog, accessPaths);
-  const joinStrategies = predictJoinStrategies(ir, catalog, correlated);
-  const dominantCosts = predictDominantCosts(ir, root, catalog, accessPaths, correlated);
-  const memoryRisks = predictMemoryRisks(root, catalog);
+  const ctx: EstimateContext = { catalog, demoted: new Set(outerJoinDemotions(ir).map((demotion) => demotion.join)) };
+  const joinStrategies = predictJoinStrategies(ir, ctx, correlated);
+  const dominantCosts = predictDominantCosts(ir, root, ctx, accessPaths, correlated);
+  const memoryRisks = predictMemoryRisks(ctx, root);
   const estimationRisks = predictEstimationRisks(ir, root, catalog);
   const scalability = predictScalability(root, ir, catalog, correlated);
 
@@ -253,17 +254,17 @@ function joinLookupIndex(
   return undefined;
 }
 
-function predictJoinStrategies(ir: QueryIR, catalog: Catalog, correlated: CorrelatedWork[]): JoinStrategy[] {
+function predictJoinStrategies(ir: QueryIR, ctx: EstimateContext, correlated: CorrelatedWork[]): JoinStrategy[] {
   const out: JoinStrategy[] = [];
   const demotions = outerJoinDemotions(ir);
   for (const block of ir.blocks) {
     for (const join of block.joins) {
       const left = block.relations.find((relation) => relation.alias === join.leftRelation);
       const right = block.relations.find((relation) => relation.alias === join.rightRelation);
-      const leftRows = relationRows(left, catalog);
-      const rightRows = relationRows(right, catalog);
-      const algorithm = chooseJoinAlgorithm(block, join, left, right, leftRows, rightRows, catalog);
-      const output = estimateJoinRows(block, join, catalog);
+      const leftRows = relationRows(left, ctx.catalog);
+      const rightRows = relationRows(right, ctx.catalog);
+      const algorithm = chooseJoinAlgorithm(block, join, left, right, leftRows, rightRows, ctx.catalog);
+      const output = estimateJoinRows(ctx, block, join);
       const demotion = demotions.find((item) => item.blockId === block.id && item.join === join);
       out.push({
         join: `${join.leftRelation} ${join.type.toUpperCase()} ${join.rightRelation}${block.id === ir.rootBlockId ? '' : ` in ${block.id}`}`,
@@ -289,7 +290,7 @@ function predictJoinStrategies(ir: QueryIR, catalog: Catalog, correlated: Correl
     out.push({
       join: `nullable NOT IN subplan ${item.childId}`,
       algorithm: 'unknown',
-      estimatedRows: child ? estimateBlockRows(child, catalog) : undefined,
+      estimatedRows: child ? estimateBlockRows(ctx, child) : undefined,
       reason: `Offline prediction: PostgreSQL 16 is likely to build and probe a hashed membership SubPlan for ${code(item.predicate.sql)} when it fits memory. Because the child value can be NULL, this must not be described as a hash anti-join: one qualifying NULL can make all nonmatches unknown.`,
     });
   }
@@ -327,7 +328,9 @@ function chooseJoinAlgorithm(
   if (leftIndex && ((rightRows !== undefined && rightRows <= 100_000) || rightFilteredUnknown)) {
     return {
       algorithm: 'nested-loop',
-      reason: `Offline prediction: PostgreSQL can reorder this inner-compatible join and probe ${code(leftIndex.name)} from the smaller or filtered ${code(right?.alias ?? 'right')} input. A bulk hash remains possible if that input is broader than estimated.`,
+      reason: join.type === 'inner'
+        ? `Offline prediction: PostgreSQL can reorder this inner-compatible join and probe ${code(leftIndex.name)} from the smaller or filtered ${code(right?.alias ?? 'right')} input. A bulk hash remains possible if that input is broader than estimated.`
+        : `Offline prediction: PostgreSQL can probe ${code(leftIndex.name)} from the smaller or filtered ${code(right?.alias ?? 'right')} input while preserving the ${join.type.toUpperCase()} JOIN semantics. A bulk hash remains possible if that input is broader than estimated.`,
     };
   }
   if (leftRows !== undefined && rightRows !== undefined && (leftRows > 100_000 || rightRows > 100_000)) {
@@ -366,7 +369,7 @@ function parentBlock(ir: QueryIR, childId: string): QueryBlockIR | undefined {
 }
 
 function driverRowsBeforeSubplan(parent: QueryBlockIR, childId: string, catalog: Catalog): number | undefined {
-  if (parent.relations.length !== 1) return estimateBlockInputRows(parent, catalog);
+  if (parent.relations.length !== 1) return estimateBlockInputRows({ catalog, demoted: new Set() }, parent);
   const relation = parent.relations[0]!;
   const table = findTable(catalog, relation.source);
   let rows = table?.rowCount;
@@ -382,10 +385,11 @@ function driverRowsBeforeSubplan(parent: QueryBlockIR, childId: string, catalog:
 function predictDominantCosts(
   ir: QueryIR,
   root: QueryBlockIR,
-  catalog: Catalog,
+  ctx: EstimateContext,
   accessPaths: Access[],
   correlated: CorrelatedWork[],
 ): DominantCost[] {
+  const { catalog } = ctx;
   const costs: WeightedCost[] = [];
 
   for (const path of accessPaths) {
@@ -418,7 +422,7 @@ function predictDominantCosts(
     });
   }
 
-  const joinEstimates = root.joins.map((join) => ({ join, rows: estimateJoinRows(root, join, catalog) }));
+  const joinEstimates = root.joins.map((join) => ({ join, rows: estimateJoinRows(ctx, root, join) }));
   for (const item of joinEstimates) {
     if (item.rows === undefined || item.rows < 10_000) continue;
     const fanOut = item.join.multipliedRelations?.length
@@ -433,7 +437,7 @@ function predictDominantCosts(
     });
   }
 
-  const inputRows = estimateBlockInputRows(root, catalog);
+  const inputRows = estimateBlockInputRows(ctx, root);
   if (root.aggregates.length || root.groupBy.length) {
     const countDistinct = root.aggregates.some((aggregate) => aggregate.distinct);
     costs.push({
@@ -462,7 +466,7 @@ function predictDominantCosts(
       return table ? Boolean(orderSupplyingIndex(root, relation, table)) : false;
     });
     if (!orderedByIndex) {
-      const candidates = rowsBeforeOrdering(root, catalog) ?? inputRows ?? largestRelationRows(root, catalog) ?? 10_000;
+      const candidates = rowsBeforeOrdering(ctx, root) ?? inputRows ?? largestRelationRows(root, catalog) ?? 10_000;
       const retained = root.limit !== undefined ? (root.offset ?? 0) + root.limit : candidates;
       const bounded = root.limit !== undefined;
       if (candidates > 100 || retained > 100) {
@@ -493,7 +497,8 @@ function predictDominantCosts(
     .map((item) => item.cost);
 }
 
-function predictMemoryRisks(root: QueryBlockIR, catalog: Catalog): MemoryRisk[] {
+function predictMemoryRisks(ctx: EstimateContext, root: QueryBlockIR): MemoryRisk[] {
+  const { catalog } = ctx;
   const risks: MemoryRisk[] = [];
   const workMem = parseMemoryBytes(catalog.settings?.work_mem);
 
@@ -517,14 +522,14 @@ function predictMemoryRisks(root: QueryBlockIR, catalog: Catalog): MemoryRisk[] 
   }
 
   const distinctAggregate = root.aggregates.find((aggregate) => aggregate.distinct);
-  if (distinctAggregate && estimateBlockInputRows(root, catalog) === undefined) {
+  if (distinctAggregate && estimateBlockInputRows(ctx, root) === undefined) {
     risks.push({
       operation: `Distinct-state work for ${distinctAggregate.sql}`,
       why: `Memory grows with qualifying non-NULL inputs, but expression/date/multicolumn selectivity is missing from the catalog. A broader match set can exceed per-operation work_mem; no current spill is asserted without a plan.`,
     });
   }
 
-  if (root.distinct && estimateBlockInputRows(root, catalog) === undefined) {
+  if (root.distinct && estimateBlockInputRows(ctx, root) === undefined) {
     risks.push({
       operation: 'DISTINCT over join output',
       why: 'Memory grows with pre-deduplication join rows rather than final unique rows. Cross-table duplicate density is unavailable, so a live plan is needed before claiming either in-memory execution or temporary I/O.',
@@ -661,7 +666,21 @@ function predictScalability(
   };
 }
 
-function estimateJoinRows(block: QueryBlockIR, join: JoinIR, catalog: Catalog): number | undefined {
+interface EstimateContext {
+  catalog: Catalog;
+  /** Outer joins whose null-extension is proven eliminated by a WHERE predicate. */
+  demoted: ReadonlySet<JoinIR>;
+}
+
+/**
+ * Estimate the rows a join emits. The base arithmetic models an inner join; a
+ * LEFT/RIGHT/FULL join then preserves every preserved-side row even when the
+ * other side matches only a fraction of rows, so the estimate is floored at the
+ * preserved side's cardinality. A null-rejected (demoted) outer join is not
+ * floored: the WHERE predicate already eliminated the null-extended rows.
+ */
+function estimateJoinRows(ctx: EstimateContext, block: QueryBlockIR, join: JoinIR): number | undefined {
+  const { catalog } = ctx;
   const left = block.relations.find((relation) => relation.alias === join.leftRelation);
   const right = block.relations.find((relation) => relation.alias === join.rightRelation);
   if (!left || !right) return undefined;
@@ -670,87 +689,148 @@ function estimateJoinRows(block: QueryBlockIR, join: JoinIR, catalog: Catalog): 
   const leftTable = findTable(catalog, left.source);
   const rightTable = findTable(catalog, right.source);
   const key = join.equiKeys[0];
-  if (!key || !leftTable || !rightTable) return undefined;
 
-  const leftUnique = uniqueOnColumns(catalog, left.source, join.equiKeys.map((item) => refForAlias(item, left.alias)?.column).filter(isDefined)).unique;
-  const rightUnique = uniqueOnColumns(catalog, right.source, join.equiKeys.map((item) => refForAlias(item, right.alias)?.column).filter(isDefined)).unique;
+  let estimate: number | undefined;
+  if (key && leftTable && rightTable) {
+    const leftUnique = uniqueOnColumns(catalog, left.source, join.equiKeys.map((item) => refForAlias(item, left.alias)?.column).filter(isDefined)).unique;
+    const rightUnique = uniqueOnColumns(catalog, right.source, join.equiKeys.map((item) => refForAlias(item, right.alias)?.column).filter(isDefined)).unique;
 
-  if (rightUnique && leftRows !== undefined) {
-    const rightFraction = filteredFraction(right, rightTable);
-    if (right.localPredicates.length && rightFraction === undefined) return undefined;
-    return roundEstimate(leftRows * (rightFraction ?? 1));
-  }
-  if (leftUnique && rightRows !== undefined) {
-    const leftFraction = filteredFraction(left, leftTable);
-    if (left.localPredicates.length && leftFraction === undefined) return undefined;
-    return roundEstimate(rightRows * (leftFraction ?? 1));
+    if (rightUnique && leftRows !== undefined) {
+      const rightFraction = filteredFraction(right, rightTable);
+      if (!right.localPredicates.length || rightFraction !== undefined) estimate = leftRows * (rightFraction ?? 1);
+    } else if (leftUnique && rightRows !== undefined) {
+      const leftFraction = filteredFraction(left, leftTable);
+      if (!left.localPredicates.length || leftFraction !== undefined) estimate = rightRows * (leftFraction ?? 1);
+    } else {
+      const rightFk = foreignKeyReferences(rightTable, leftTable, join, right.alias, left.alias);
+      if (rightFk && leftRows !== undefined && leftTable.rowCount && rightTable.rowCount) {
+        const fraction = filteredFraction(right, rightTable);
+        if (!right.localPredicates.length || fraction !== undefined) estimate = leftRows * (rightTable.rowCount / leftTable.rowCount) * (fraction ?? 1);
+      } else {
+        const leftFk = foreignKeyReferences(leftTable, rightTable, join, left.alias, right.alias);
+        if (leftFk && rightRows !== undefined && rightTable.rowCount && leftTable.rowCount) {
+          const fraction = filteredFraction(left, leftTable);
+          if (!left.localPredicates.length || fraction !== undefined) estimate = rightRows * (leftTable.rowCount / rightTable.rowCount) * (fraction ?? 1);
+        }
+      }
+    }
   }
 
-  const rightFk = foreignKeyReferences(rightTable, leftTable, join, right.alias, left.alias);
-  if (rightFk && leftRows !== undefined && leftTable.rowCount && rightTable.rowCount) {
-    const fraction = filteredFraction(right, rightTable);
-    if (right.localPredicates.length && fraction === undefined) return undefined;
-    return roundEstimate(leftRows * (rightTable.rowCount / leftTable.rowCount) * (fraction ?? 1));
-  }
-  const leftFk = foreignKeyReferences(leftTable, rightTable, join, left.alias, right.alias);
-  if (leftFk && rightRows !== undefined && rightTable.rowCount && leftTable.rowCount) {
-    const fraction = filteredFraction(left, leftTable);
-    if (left.localPredicates.length && fraction === undefined) return undefined;
-    return roundEstimate(rightRows * (leftTable.rowCount / rightTable.rowCount) * (fraction ?? 1));
+  if (estimate !== undefined) return roundEstimate(applyOuterJoinFloor(ctx, join, estimate, leftRows, rightRows));
+
+  // The inner-match cardinality is unknowable, but a non-demoted outer join
+  // still emits every preserved-side row — a provable lower bound.
+  if (ctx.demoted.has(join)) return undefined;
+  if (join.type === 'left' && leftRows !== undefined) return roundEstimate(leftRows);
+  if (join.type === 'right' && rightRows !== undefined) return roundEstimate(rightRows);
+  if (join.type === 'full') {
+    const sides = [leftRows, rightRows].filter(isDefined);
+    if (sides.length) return roundEstimate(Math.max(...sides));
   }
   return undefined;
 }
 
-function estimateBlockInputRows(block: QueryBlockIR, catalog: Catalog): number | undefined {
-  if (!block.joins.length) return relationRows(block.relations[0], catalog);
-  const estimates = block.joins.map((join) => estimateJoinRows(block, join, catalog));
+function applyOuterJoinFloor(ctx: EstimateContext, join: JoinIR, estimate: number, leftRows: number | undefined, rightRows: number | undefined): number {
+  if (ctx.demoted.has(join)) return estimate;
+  switch (join.type) {
+    case 'left':
+      return Math.max(estimate, leftRows ?? estimate);
+    case 'right':
+      return Math.max(estimate, rightRows ?? estimate);
+    case 'full':
+      return Math.max(estimate, leftRows ?? estimate, rightRows ?? estimate);
+    default:
+      return estimate;
+  }
+}
+
+function estimateBlockInputRows(ctx: EstimateContext, block: QueryBlockIR): number | undefined {
+  if (!block.joins.length) return relationRows(block.relations[0], ctx.catalog);
+  const estimates = block.joins.map((join) => estimateJoinRows(ctx, block, join));
   return estimates.at(-1) ?? estimates.filter(isDefined).at(-1);
 }
 
-function estimateBlockRows(block: QueryBlockIR, catalog: Catalog): number | undefined {
+function estimateBlockRows(ctx: EstimateContext, block: QueryBlockIR): number | undefined {
   if (block.groupBy.length) {
-    const counts = block.groupBy.map((column) => column.table ? distinctCount(catalog, column.table, column.column) : undefined).filter(isDefined);
-    if (counts.length === block.groupBy.length) return Math.min(product(counts), estimateBlockInputRows(block, catalog) ?? Infinity);
+    const counts = block.groupBy.map((column) => column.table ? distinctCount(ctx.catalog, column.table, column.column) : undefined).filter(isDefined);
+    if (counts.length === block.groupBy.length) return Math.min(product(counts), estimateBlockInputRows(ctx, block) ?? Infinity);
   }
   if (block.aggregates.length) return 1;
-  return estimateBlockInputRows(block, catalog);
+  return estimateBlockInputRows(ctx, block);
 }
 
-function estimateOutputRows(block: QueryBlockIR, catalog: Catalog): number | undefined {
+function estimateOutputRows(ctx: EstimateContext, block: QueryBlockIR): number | undefined {
   if (block.aggregates.length && !block.groupBy.length && !block.groupByExpressions?.length) return 1;
   const groups = block.groupByExpressions ?? [];
   if (groups.length) {
-    if (groups.every((expression) => groupExpressionFixed(block, expression.sql, expression.ordinal))) return 1;
+    if (groups.every((expression) => groupExpressionFixed(block, expression))) return 1;
     const dayBound = boundedDateGroupCount(block);
     if (dayBound !== undefined) return dayBound;
   }
   if (block.groupBy.length) {
     for (const relation of block.relations) {
-      const table = findTable(catalog, relation.source);
+      const table = findTable(ctx.catalog, relation.source);
       if (!table?.primaryKey?.length || !table.rowCount) continue;
       const grouped = new Set(block.groupBy.filter((column) => column.alias === relation.alias).map((column) => column.column));
       if (table.primaryKey.every((column) => grouped.has(column))) {
-        return Math.min(table.rowCount, estimateBlockInputRows(block, catalog) ?? table.rowCount);
+        return Math.min(table.rowCount, estimateBlockInputRows(ctx, block) ?? table.rowCount);
       }
     }
-    const counts = block.groupBy.map((column) => column.table ? distinctCount(catalog, column.table, column.column) : undefined);
-    if (counts.every(isDefined)) return Math.min(product(counts), estimateBlockInputRows(block, catalog) ?? Infinity);
+    const counts = block.groupBy.map((column) => column.table ? distinctCount(ctx.catalog, column.table, column.column) : undefined);
+    if (counts.every(isDefined)) return Math.min(product(counts), estimateBlockInputRows(ctx, block) ?? Infinity);
   }
-  return block.limit ?? estimateBlockInputRows(block, catalog);
+  return block.limit ?? estimateBlockInputRows(ctx, block);
 }
 
-function rowsBeforeOrdering(block: QueryBlockIR, catalog: Catalog): number | undefined {
+function rowsBeforeOrdering(ctx: EstimateContext, block: QueryBlockIR): number | undefined {
   if (block.aggregates.length || block.groupBy.length || block.groupByExpressions?.length || block.distinct) {
-    return estimateOutputRows(block, catalog);
+    return estimateOutputRows(ctx, block);
   }
-  return estimateBlockInputRows(block, catalog);
+  return estimateBlockInputRows(ctx, block);
 }
 
-function groupExpressionFixed(block: QueryBlockIR, sql: string, ordinal: number | undefined): boolean {
-  const expression = ordinal === undefined ? sql : block.projections[ordinal - 1]?.sql;
-  if (!expression) return false;
-  const target = normalizeSql(expression);
-  return block.predicates.some((predicate) => predicate.kind === 'equality' && normalizeSql(predicate.sql).startsWith(`${target}=`));
+function groupExpressionFixed(block: QueryBlockIR, expression: NonNullable<QueryBlockIR['groupByExpressions']>[number]): boolean {
+  const sql = expression.ordinal === undefined ? expression.sql : block.projections[expression.ordinal - 1]?.sql;
+  if (!sql) return false;
+  // Exact expression match: `date_trunc('month', o.created_at) = <constant>`.
+  if (predicatePinsConstant(block, sql)) return true;
+  // A bare-column group also matches qualified/unqualified spellings, provided
+  // the group depends on that single column.
+  if (expression.columns.length === 1) return columnPinnedByConstant(block, expression.columns[0]!);
+  return false;
+}
+
+function predicatePinsConstant(block: QueryBlockIR, group: string): boolean {
+  const target = normalizeSql(group.replace(/`/g, ''));
+  return block.predicates.some((predicate) => {
+    const operands = predicate.equalityOperands;
+    if (predicate.kind !== 'equality' || !operands) return false;
+    return (normalizeSql(operands.left) === target && operands.rightConstant)
+        || (normalizeSql(operands.right) === target && operands.leftConstant);
+  });
+}
+
+function columnPinnedByConstant(block: QueryBlockIR, column: ResolvedColumnRef): boolean {
+  if (!column.alias && !column.table) return false;
+  return block.predicates.some((predicate) => {
+    const operands = predicate.equalityOperands;
+    if (predicate.kind !== 'equality' || !operands) return false;
+    if (operands.rightConstant && operandIsColumn(predicate, operands.left, column)) return true;
+    if (operands.leftConstant && operandIsColumn(predicate, operands.right, column)) return true;
+    return false;
+  });
+}
+
+function operandIsColumn(predicate: Predicate, operandSql: string, column: ResolvedColumnRef): boolean {
+  const op = normalizeSql(operandSql);
+  const forms = [
+    column.alias ? `${column.alias}.${column.column}` : null,
+    column.table ? `${column.table}.${column.column}` : null,
+    column.column,
+  ].filter((form): form is string => form !== null).map(normalizeSql);
+  if (!forms.includes(op)) return false;
+  return predicate.columns.some((ref) => ref.column === column.column
+    && (ref.alias ?? '') === (column.alias ?? '') && (ref.table ?? '') === (column.table ?? ''));
 }
 
 function boundedDateGroupCount(block: QueryBlockIR): number | undefined {

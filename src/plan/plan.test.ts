@@ -80,6 +80,47 @@ test('outer-join demotion is predicted without treating it as an execution barri
   assert.match(join?.reason ?? '', /no outer-join execution barrier/);
 });
 
+test('LEFT JOIN estimation preserves the left-side cardinality for partial, zero, and complete right matches', () => {
+  const cases = [
+    `SELECT c.customer_id, p.name FROM shop.customers c LEFT JOIN shop.products p ON c.customer_id = p.product_id AND p.is_discontinued = true`,
+    `SELECT c.customer_id, p.name FROM shop.customers c LEFT JOIN shop.products p ON c.customer_id = p.product_id AND p.product_id < 0`,
+    `SELECT c.customer_id, p.name FROM shop.customers c LEFT JOIN shop.products p ON c.customer_id = p.product_id`,
+  ];
+  for (const sql of cases) {
+    const result = predictExecution(bindQuery(sql, catalog), catalog);
+    const join = result.joinStrategies.find((item) => /LEFT/.test(item.join));
+    assert.equal(join?.estimatedRows, 200_000, sql);
+  }
+});
+
+test('an inner join keeps the filtered estimate without the outer-join floor', () => {
+  const inner = predictExecution(
+    bindQuery('SELECT c.customer_id, p.name FROM shop.customers c JOIN shop.products p ON c.customer_id = p.product_id AND p.is_discontinued = true', catalog),
+    catalog,
+  );
+  const join = inner.joinStrategies.find((item) => /INNER/.test(item.join));
+  assert.equal(join?.estimatedRows, 100_000);
+});
+
+test('a WHERE predicate that null-rejects the right side removes the outer-join floor', () => {
+  const demoted = predictExecution(
+    bindQuery('SELECT c.customer_id, p.name FROM shop.customers c LEFT JOIN shop.products p ON c.customer_id = p.product_id WHERE p.is_discontinued = true', catalog),
+    catalog,
+  );
+  const join = demoted.joinStrategies.find((item) => /LEFT/.test(item.join));
+  assert.equal(join?.estimatedRows, 100_000);
+  assert.match(join?.reason ?? '', /execute this as an inner join/);
+});
+
+test('a non-unique right side still never drops a LEFT join below the left-side cardinality', () => {
+  const result = predictExecution(
+    bindQuery('SELECT c.customer_id, o.order_id FROM shop.customers c LEFT JOIN shop.orders o ON o.customer_id = c.customer_id AND o.status = \'complete\'', catalog),
+    catalog,
+  );
+  const join = result.joinStrategies.find((item) => /LEFT/.test(item.join));
+  assert.ok(join?.estimatedRows !== undefined && join.estimatedRows >= 200_000, `expected >= 200,000, got ${join?.estimatedRows}`);
+});
+
 test('DISTINCT and count DISTINCT name pre-deduplication work and estimate risk', () => {
   const distinct = prediction('q08-distinct-hides-fanout');
   assert.match(JSON.stringify(distinct.dominantCosts), /DISTINCT operates after the joins/);
@@ -106,5 +147,22 @@ test('per-row correlated max exposes two-million-loop and sum-of-squares scaling
   assert.match(subplan?.reason ?? '', /2,000,000/);
   assert.match(result.scalability.complexity ?? '', /Σk²/);
   assert.equal(result.dominantCosts[0]?.what.startsWith('Repeat max'), true);
+});
+
+test('a column=column equality keeps the grouped output estimate large', () => {
+  const notFixed = predictExecution(
+    bindQuery('SELECT o.total_cents, count(*) FROM shop.orders o WHERE o.total_cents = o.customer_id GROUP BY o.total_cents ORDER BY count(*) DESC', catalog),
+    catalog,
+  );
+  assert.ok(notFixed.dominantCosts.some((cost) => /Order all result candidates/.test(cost.what)), 'col=col group must not collapse to one row');
+  assert.ok(notFixed.dominantCosts.some((cost) => /full sort or an order-aware aggregate|qualifying rows still compete/.test(cost.why)));
+});
+
+test('a constant equality collapses the grouped output estimate to a single row', () => {
+  const fixed = predictExecution(
+    bindQuery("SELECT o.status, count(*) FROM shop.orders o WHERE o.status = 'complete' GROUP BY o.status ORDER BY count(*) DESC", catalog),
+    catalog,
+  );
+  assert.ok(!fixed.dominantCosts.some((cost) => /Order all result candidates/.test(cost.what)), 'fixed group needs no full sort');
 });
 

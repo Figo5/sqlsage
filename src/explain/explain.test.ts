@@ -80,3 +80,38 @@ test('grouped-key HAVING and distinct nullable counts retain their semantic dist
   assert.match(JSON.stringify(distinct.caveats), /distinct count ignores NULL values/i);
   assert.match(JSON.stringify(distinct.caveats), /grouping key is positional/i);
 });
+
+test('a column=column equality does not fix the grouping value', () => {
+  const notFixed = explainSemantics(
+    bindQuery('SELECT o.total_cents, count(*) FROM shop.orders o WHERE o.total_cents = o.customer_id GROUP BY o.total_cents', catalog),
+    catalog,
+  );
+  assert.match(notFixed.resultShape.grain, /One row per distinct combination/);
+  assert.doesNotMatch(notFixed.resultShape.grain, /At most one row/);
+
+  const notFixedExpression = explainSemantics(
+    bindQuery('SELECT o.total_cents, count(*) FROM shop.orders o WHERE o.total_cents = o.customer_id + 1 GROUP BY o.total_cents', catalog),
+    catalog,
+  );
+  assert.doesNotMatch(notFixedExpression.resultShape.grain, /At most one row/);
+});
+
+test('a constant equality fixes the grouping value in both operand orders and unqualified spellings', () => {
+  for (const sql of [
+    "SELECT o.status, count(*) FROM shop.orders o WHERE o.status = 'complete' GROUP BY o.status",
+    "SELECT o.status, count(*) FROM shop.orders o WHERE 'complete' = o.status GROUP BY o.status",
+    "SELECT status, count(*) FROM shop.orders WHERE status = 'complete' GROUP BY status",
+    'SELECT o.status, count(*) FROM shop.orders o WHERE o.status = $1 GROUP BY o.status',
+  ]) {
+    const result = explainSemantics(bindQuery(sql, catalog), catalog);
+    assert.match(result.resultShape.grain, /At most one row/, `expected fixed group: ${sql}`);
+  }
+});
+
+test('a non-injective cast equality does not fix the grouping value', () => {
+  const notFixed = explainSemantics(
+    bindQuery("SELECT o.created_at, count(*) FROM shop.orders o WHERE o.created_at::date = DATE '2024-03-01' GROUP BY o.created_at", catalog),
+    catalog,
+  );
+  assert.doesNotMatch(notFixed.resultShape.grain, /At most one row/);
+});

@@ -73,9 +73,29 @@ export function buildPredicate(expr: Expr, clause: Clause, ctx: PredicateContext
     clause,
   };
   if (negated) pred.negated = true;
+  if (kind === 'equality' && !negated) recordEqualityOperands(expr, ctx, pred);
   const sel = estimateSelectivity(expr, ctx, kind, negated);
   if (sel !== undefined) pred.selectivity = clamp(sel);
   return pred;
+}
+
+/**
+ * Capture the two sides of a plain `=` predicate so consumers can prove one
+ * side is pinned to a single value without re-parsing or string surgery. Only
+ * ever recorded for an actual binary `=`; join-shaped and `IN`/`ANY` equalities
+ * are classified to other kinds before we get here.
+ */
+function recordEqualityOperands(expr: Expr, ctx: PredicateContext, pred: Predicate): void {
+  const binary = expr as { type?: string; op?: string; left?: Expr; right?: Expr };
+  if (binary.type !== 'binary' || binary.op !== '=' || !binary.left || !binary.right) return;
+  const left = analyzeOperand(binary.left);
+  const right = analyzeOperand(binary.right);
+  pred.equalityOperands = {
+    left: ctx.source.of(binary.left),
+    right: ctx.source.of(binary.right),
+    leftConstant: left.constant,
+    rightConstant: right.constant,
+  };
 }
 
 /** Every column reference in this predicate, excluding nested subqueries. */

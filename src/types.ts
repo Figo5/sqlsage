@@ -150,6 +150,19 @@ export interface Predicate {
   negated?: boolean;
   /** Stable ids of subquery blocks syntactically contained in this predicate. */
   subqueryBlockIds?: string[];
+  /**
+   * Structured operands for a non-negated `=` predicate (`kind === 'equality'`).
+   * Each side is its exact source slice plus whether it is single-valued (a
+   * literal, a cast of a literal, or a parameter — nothing referencing columns
+   * or subqueries). Lets consumers prove a group expression is pinned to a
+   * constant without re-parsing or prefix-matching the whole predicate text.
+   */
+  equalityOperands?: {
+    left: string;
+    right: string;
+    leftConstant: boolean;
+    rightConstant: boolean;
+  };
 }
 
 export interface JoinIR {

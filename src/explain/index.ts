@@ -332,7 +332,11 @@ function resultGrain(root: QueryBlockIR, catalog: Catalog): string {
     ? root.groupByExpressions.map((expression) => expression.sql)
     : root.groupBy.map(columnLabel);
   if (groups.length) {
-    const fixed = groups.every((group) => expressionFixedByEquality(root, group));
+    const fixed = root.groupByExpressions?.length
+      ? root.groupByExpressions.every((expression) =>
+          expressionFixedByEquality(root, expression.sql)
+          || (expression.columns.length === 1 && columnFixedByEquality(root, expression.columns[0]!)))
+      : root.groupBy.every((column) => columnFixedByEquality(root, column));
     const having = root.having.length ? ' and passes the post-group conditions' : '';
     return `${fixed ? 'At most one row for the fixed grouping value' : `One row per distinct combination of ${naturalList(groups.map(code))}`} that has at least one qualifying input row${having}`;
   }
@@ -476,13 +480,59 @@ function timezoneSensitiveFragments(root: QueryBlockIR): string[] {
   ));
 }
 
+/**
+ * True when an equality predicate pins `group` to a single value: the group
+ * expression appears verbatim on one side and the other side is a constant or
+ * parameter. A `column = column` equality never counts — it leaves the group
+ * with one row per distinct value, not one row total.
+ */
 function expressionFixedByEquality(root: QueryBlockIR, group: string): boolean {
   if (/^\d+$/.test(group.trim())) {
     const ordinal = Number(group.trim());
     const projection = root.projections[ordinal - 1];
-    return projection ? root.predicates.some((predicate) => predicate.kind === 'equality' && normalize(predicate.sql).startsWith(`${normalize(projection.sql)}=`)) : false;
+    return projection ? predicatePinsConstant(root, projection.sql) : false;
   }
-  return root.predicates.some((predicate) => predicate.kind === 'equality' && normalize(predicate.sql).startsWith(`${normalize(group)}=`));
+  return predicatePinsConstant(root, group);
+}
+
+/** Column-based variant that also matches qualified-vs-unqualified spellings. */
+function columnFixedByEquality(root: QueryBlockIR, column: ResolvedColumnRef): boolean {
+  if (!column.alias && !column.table) return false;
+  return root.predicates.some((predicate) => {
+    const operands = predicate.equalityOperands;
+    if (predicate.kind !== 'equality' || !operands) return false;
+    if (operands.rightConstant && operandIsColumn(predicate, operands.left, column)) return true;
+    if (operands.leftConstant && operandIsColumn(predicate, operands.right, column)) return true;
+    return false;
+  });
+}
+
+function predicatePinsConstant(root: QueryBlockIR, group: string): boolean {
+  const target = normalize(group.replace(/`/g, ''));
+  return root.predicates.some((predicate) => {
+    const operands = predicate.equalityOperands;
+    if (predicate.kind !== 'equality' || !operands) return false;
+    return (normalize(operands.left) === target && operands.rightConstant)
+        || (normalize(operands.right) === target && operands.leftConstant);
+  });
+}
+
+/**
+ * True when the operand is a *bare* column reference spelling the same column
+ * as `column` (qualified by alias or table, or unqualified). The resolved-ref
+ * guard prevents an unqualified operand of the same name from matching a
+ * different relation's column.
+ */
+function operandIsColumn(predicate: Predicate, operandSql: string, column: ResolvedColumnRef): boolean {
+  const op = normalize(operandSql);
+  const forms = [
+    column.alias ? `${column.alias}.${column.column}` : null,
+    column.table ? `${column.table}.${column.column}` : null,
+    column.column,
+  ].filter((form): form is string => form !== null).map(normalize);
+  if (!forms.includes(op)) return false;
+  return predicate.columns.some((ref) => ref.column === column.column
+    && (ref.alias ?? '') === (column.alias ?? '') && (ref.table ?? '') === (column.table ?? ''));
 }
 
 function projectedIdentity(root: QueryBlockIR, catalog: Catalog): string | undefined {
