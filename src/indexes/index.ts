@@ -67,7 +67,7 @@ export function recommendIndexes(
     if (spec) specs.push(spec);
   }
   if (hasFinding(findings, 'full-cardinality-correlated-aggregate')) {
-    const spec = topPerGroupIndex(ir, root);
+    const spec = topPerGroupIndex(ir, catalog, root);
     if (spec) specs.push(spec);
   }
   if (hasFinding(findings, 'unindexed-json-scalar-extraction')) {
@@ -108,7 +108,7 @@ function rawMonthRangeIndex(
     candidate.column.column !== ref.column && (candidate.predicate.selectivity ?? 1) <= 0.95,
   );
   const keys = [...equalities.map((candidate) => candidate.column.column), ref.column];
-  const include = payloadColumns(block, catalog, ref.alias, keys, 3);
+  const include = payloadColumns(block, catalog, ref.alias, keys, 3, ref.table);
   return {
     purpose: 'raw-range-cover',
     table: ref.table,
@@ -151,7 +151,7 @@ function correlatedAggregateIndexes(
       !/\$\d+/.test(predicate.sql),
     );
     if (table && selective) {
-      const include = payloadColumns(root, catalog, outerRef.alias, [outerRef.column], 2);
+      const include = payloadColumns(root, catalog, outerRef.alias, [outerRef.column], 2, outerRef.table);
       specs.push({
         purpose: 'selective-driver-partial-cover',
         table: outerRef.table,
@@ -216,7 +216,7 @@ function keysetIndex(catalog: Catalog, block: QueryBlockIR): RecommendationSpec 
     ...equalities.map((candidate) => candidate.column.column),
     ...block.orderBy.map((order) => `${order.column!.column} ${order.direction.toUpperCase()}`),
   ];
-  const include = payloadColumns(block, catalog, alias, keys, 3);
+  const include = payloadColumns(block, catalog, alias, keys, 3, tableName);
   return {
     purpose: 'keyset-cover',
     table: tableName,
@@ -362,7 +362,7 @@ function rawCastRangeIndex(
   };
 }
 
-function topPerGroupIndex(ir: QueryIR, root: QueryBlockIR): RecommendationSpec | undefined {
+function topPerGroupIndex(ir: QueryIR, catalog: Catalog, root: QueryBlockIR): RecommendationSpec | undefined {
   const child = ir.blocks.find((block) =>
     block.correlated && block.aggregates.length === 1 && ['max', 'min'].includes(block.aggregates[0]!.func.toLowerCase()),
   );
@@ -374,7 +374,7 @@ function topPerGroupIndex(ir: QueryIR, root: QueryBlockIR): RecommendationSpec |
   const outerAlias = child?.correlationRefs?.[0]?.alias;
   if (!child || !aggregate || !innerKey || !extremeRef || !innerRelation?.source || !outerAlias) return undefined;
   const keys = [innerKey.column, `${extremeRef.column} ${aggregate.func.toLowerCase() === 'max' ? 'DESC' : 'ASC'}`];
-  const include = payloadColumns(root, { dialect: 'postgres', tables: [] }, outerAlias, keys, 3, false);
+  const include = payloadColumns(root, catalog, outerAlias, keys, 3, innerRelation.source, false);
   return {
     purpose: 'top-per-group-cover',
     table: innerRelation.source,
@@ -443,12 +443,87 @@ function jsonScalarIndex(block: QueryBlockIR, findings: Finding[]): Recommendati
 // Materialization and shared facts
 // ---------------------------------------------------------------------------
 
+/** Index methods whose key columns accept an ASC/DESC modifier. */
+const ORDERED_METHODS = new Set(['btree']);
+
+/**
+ * Everything PostgreSQL requires of an emitted definition, enforced at the one
+ * point every recommendation passes through so no rule can bypass it.
+ *
+ * Returns a normalized spec, or `undefined` when the definition must not be
+ * emitted at all. The split between those two outcomes is not cosmetic, and was
+ * settled by running each shape against PostgreSQL 16.14 rather than by
+ * reasoning about the manual:
+ *
+ *   Rejected — the server refuses the statement, so advice built on it is
+ *   worthless and shipping it costs the reader a failed round trip:
+ *     - a key or payload naming a column the table does not have
+ *       ("column ... does not exist"), which is how a payload gathered from
+ *       one relation ends up on another relation's index;
+ *     - ASC/DESC on a payload column
+ *       ("including column does not support ASC/DESC options");
+ *     - ASC/DESC on a key under a method that has no ordering
+ *       ("access method \"brin\" does not support ASC/DESC options").
+ *
+ *   Normalized — PostgreSQL *accepts* these and builds a real index, so
+ *   dropping the recommendation would discard advice that is sound apart from
+ *   one redundant column. Both merely waste storage and write bandwidth:
+ *     - the same key column listed twice;
+ *     - a payload column that is already a key.
+ *
+ * The audit that prompted this recorded all five as DDL PostgreSQL rejects.
+ * Two of them it accepts; see docs/AUDIT-2026-08-03.md.
+ */
+export function validatedDefinition(
+  catalog: Catalog,
+  spec: AdviceIndexDefinition,
+): { keys: string[]; include: string[] } | undefined {
+  const table = findTable(catalog, spec.table);
+  if (!table) return undefined;
+  const ordered = ORDERED_METHODS.has(spec.method ?? 'btree');
+  // An expression key carries its own parentheses and names no single column,
+  // so column existence does not apply to it.
+  const isExpression = (key: string) => /^\(.*\)$/.test(key.trim());
+  const known = (column: string) => !!findColumn(catalog, spec.table, column);
+
+  const keys: string[] = [];
+  const seenKeys = new Set<string>();
+  for (const key of spec.keys) {
+    if (!isExpression(key)) {
+      if (!known(baseKeyName(key))) return undefined;
+      if (!ordered && /\s+(ASC|DESC)$/i.test(key.trim())) return undefined;
+    }
+    const identity = baseKeyName(key);
+    if (seenKeys.has(identity)) continue;
+    seenKeys.add(identity);
+    keys.push(key);
+  }
+  if (!keys.length) return undefined;
+
+  const include: string[] = [];
+  const seenInclude = new Set<string>();
+  for (const column of spec.include ?? []) {
+    if (/\s+(ASC|DESC)$/i.test(column.trim())) return undefined;
+    if (!known(column)) return undefined;
+    const identity = column.toLowerCase();
+    if (seenKeys.has(identity) || seenInclude.has(identity)) continue;
+    seenInclude.add(identity);
+    include.push(column);
+  }
+
+  return { keys, include };
+}
+
 function materializeRecommendation(catalog: Catalog, spec: RecommendationSpec): IndexRecommendation | undefined {
   const table = findTable(catalog, spec.table);
   if (!table || !spec.keys.length) return undefined;
   // A plain view has no storage, so CREATE INDEX on it is DDL PostgreSQL rejects.
   // Materialized views are physical and indexable, so they are not excluded.
   if (table.kind === 'view') return undefined;
+
+  const validated = validatedDefinition(catalog, spec);
+  if (!validated) return undefined;
+  spec = { ...spec, keys: validated.keys, include: validated.include };
   if (hasEquivalentIndex(table.indexes, spec)) return undefined;
 
   const id = indexDefinitionAdviceId(spec);
@@ -498,13 +573,29 @@ function materializeRecommendation(catalog: Catalog, spec: RecommendationSpec): 
   };
 }
 
+/**
+ * Payload columns for an index, drawn from what `alias` contributes to the
+ * block's output and joins.
+ *
+ * `onTable` is the relation the index is actually built on. It is not always
+ * the relation `alias` refers to: a correlated-extreme index keys the inner
+ * relation while its payload serves the outer query. Columns are kept only when
+ * they exist on `onTable`, because a payload naming a column of some other
+ * relation is DDL PostgreSQL refuses outright. Restricting here rather than
+ * rejecting downstream keeps the index itself, which is sound, and drops only
+ * the columns that cannot belong to it.
+ *
+ * `filterByWidth` skips wide and toastable payload; it is disabled where the
+ * caller has already decided the projection defines the payload.
+ */
 function payloadColumns(
   block: QueryBlockIR,
   catalog: Catalog,
   alias: string,
   keys: string[],
   max: number,
-  useCatalog = true,
+  onTable: string,
+  filterByWidth = true,
 ): string[] {
   const keyNames = new Set(keys.map(baseKeyName));
   const candidates = unique([
@@ -513,9 +604,9 @@ function payloadColumns(
   ].filter((ref) => ref.alias === alias).map((ref) => ref.column));
   return candidates.filter((column) => {
     if (keyNames.has(column.toLowerCase())) return false;
-    if (!useCatalog) return true;
-    const relation = block.relations.find((candidate) => candidate.alias === alias)?.source;
-    const catalogColumn = relation ? findColumn(catalog, relation, column) : undefined;
+    if (!findColumn(catalog, onTable, column)) return false;
+    if (!filterByWidth) return true;
+    const catalogColumn = findColumn(catalog, onTable, column);
     return !/jsonb|bytea/i.test(catalogColumn?.dataType ?? '') && (catalogColumn?.stats?.avgWidth ?? 0) <= 128;
   }).slice(0, max);
 }

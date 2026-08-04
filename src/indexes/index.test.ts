@@ -8,7 +8,7 @@ import { detectAntiPatterns } from '../antipatterns/index.ts';
 import { bindQuery } from '../ir/index.ts';
 import { recognizeCreateIndexDdl } from '../report/index-ddl.ts';
 import type { Catalog, Finding, IndexRecommendation } from '../types.ts';
-import { recommendIndexes } from './index.ts';
+import { recommendIndexes, validatedDefinition } from './index.ts';
 
 const catalog = JSON.parse(
   await readFile(new URL('../../corpus/catalog.json', import.meta.url), 'utf8'),
@@ -154,4 +154,98 @@ test('no index is recommended for a plain view, which has no storage to index', 
   const asMaterialized = structuredClone(base);
   asMaterialized.tables.find((table) => table.name === 'orders')!.kind = 'materialized-view';
   assert.ok(analyze(query.sql, asMaterialized).analysis.indexes.length > 0);
+});
+
+// ---------------------------------------------------------------------------
+// Emitted definitions must be executable, and correct where PostgreSQL is
+// merely permissive.
+//
+// The expectations below were established by running each shape against
+// PostgreSQL 16.14, not by reading the manual. Two of them PostgreSQL accepts,
+// which is why the emitter normalizes rather than discards them — dropping a
+// recommendation over a redundant column would throw away sound advice. See
+// docs/AUDIT-2026-08-03.md.
+// ---------------------------------------------------------------------------
+
+test('a payload column that is not on the indexed table is dropped, keeping the index', () => {
+  // Correlated extreme where the outer relation (customers) differs from the
+  // inner, indexed relation (orders). The payload is gathered from the outer
+  // query, so an unguarded emitter puts customers columns on an orders index:
+  // PostgreSQL answers `column "email" does not exist`.
+  const { indexes } = analyze(`
+    SELECT c.customer_id, c.email, c.loyalty_tier
+    FROM shop.customers c
+    WHERE c.last_login_at = (
+      SELECT max(o2.created_at) FROM shop.orders o2 WHERE o2.customer_id = c.customer_id
+    )
+    ORDER BY c.customer_id;`);
+
+  const index = indexes.find((candidate) => candidate.table === 'orders');
+  assert.ok(index, 'the orders index is sound and must survive');
+  assert.deepEqual(index.columns, ['customer_id', 'created_at DESC']);
+  assert.equal(index.includeColumns, undefined);
+  assert.doesNotMatch(index.ddl, /email|loyalty_tier/);
+  assert.equal(recognizeCreateIndexDdl(index.ddl).valid, true);
+});
+
+test('a key column is never repeated, even though PostgreSQL would accept it', () => {
+  // innerKey and the extreme column are the same column here. PostgreSQL builds
+  // `(customer_id, customer_id DESC)` without complaint; it is simply a worse
+  // index than the one the user was told they were getting.
+  const { indexes } = analyze(`
+    SELECT o.customer_id, o.order_id
+    FROM shop.orders o
+    WHERE o.customer_id = (
+      SELECT max(o2.customer_id) FROM shop.orders o2 WHERE o2.customer_id = o.customer_id
+    )
+    ORDER BY o.customer_id;`);
+
+  for (const index of indexes) {
+    const bare = index.columns.map((column) => column.replace(/\s+(ASC|DESC)$/i, '').toLowerCase());
+    assert.equal(new Set(bare).size, bare.length, `duplicate key column in ${index.ddl}`);
+  }
+});
+
+test('a payload column that duplicates a key is removed, exposing an existing index', () => {
+  // The selective equality and the join key are the same column, so the payload
+  // repeats the key. Once that redundancy is removed the definition is exactly
+  // the existing idx_orders_customer_id, and advising it again is noise.
+  const { indexes } = analyze(`
+    SELECT DISTINCT c.email FROM shop.customers c
+    JOIN shop.orders o ON o.customer_id = c.customer_id
+    JOIN shop.order_items oi ON oi.order_id = o.order_id
+    WHERE o.customer_id = 42;`);
+
+  for (const index of indexes) {
+    const keys = index.columns.map((column) => column.replace(/\s+(ASC|DESC)$/i, '').toLowerCase());
+    for (const payload of index.includeColumns ?? []) {
+      assert.ok(!keys.includes(payload.toLowerCase()), `${payload} is both key and payload in ${index.ddl}`);
+    }
+  }
+  assert.equal(indexes.some((index) => /ON "shop"."orders" \("customer_id"\)/.test(index.ddl)), false);
+});
+
+test('the shared guard refuses definitions PostgreSQL rejects and normalizes the rest', () => {
+  const spec = (over: Partial<Parameters<typeof validatedDefinition>[1]>) =>
+    validatedDefinition(catalog, { purpose: 'test', table: 'orders', keys: ['customer_id'], ...over });
+
+  // Refused: PostgreSQL errors on each of these.
+  assert.equal(spec({ keys: ['not_a_column'] }), undefined, 'key naming an absent column');
+  assert.equal(spec({ include: ['email'] }), undefined, 'payload from another table');
+  assert.equal(spec({ include: ['created_at DESC'] }), undefined, 'ASC/DESC on a payload column');
+  assert.equal(spec({ keys: ['created_at DESC'], method: 'brin' }), undefined, 'ASC/DESC under brin');
+  assert.equal(spec({ keys: [] }), undefined, 'no keys at all');
+
+  // Normalized: PostgreSQL accepts these, so the advice is kept and cleaned.
+  assert.deepEqual(spec({ keys: ['customer_id', 'customer_id DESC'] })?.keys, ['customer_id']);
+  assert.deepEqual(spec({ include: ['customer_id'] })?.include, []);
+  assert.deepEqual(spec({ include: ['status', 'status'] })?.include, ['status']);
+
+  // Untouched: an expression key names no column, so existence cannot apply.
+  assert.deepEqual(
+    spec({ keys: ["(payload->>'x')"], table: 'events' })?.keys,
+    ["(payload->>'x')"],
+  );
+  // A DESC key under the default btree is ordinary and must survive.
+  assert.deepEqual(spec({ keys: ['created_at DESC'] })?.keys, ['created_at DESC']);
 });
