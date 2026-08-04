@@ -59,14 +59,21 @@ const MIN_VALIDATED = 11;
 
 /**
  * Access paths SQLSage predicts wrongly today, kept explicit so the gate can
- * fail on *new* mispredictions without pretending these are correct. Each is an
- * open audit finding, not an accepted behaviour.
+ * fail on *new* mispredictions without pretending these are correct.
  *
- * See docs/AUDIT-2026-08-03.md P0-3 (access-path predictor ignores index method
- * and predicate kind).
+ * The one entry is a modelling limit, not an oversight. `o` has no index
+ * serving its row conditions, and the index that leads with its join key is set
+ * aside because that join's own driver (`c`, 200k rows) looks too large for
+ * repeated lookups. PostgreSQL reaches `orders` later in the chain, after
+ * `p.category_id = 42` has cut the input to a few hundred rows, and uses the
+ * index. Predicting that needs join-order reasoning the analyzer does not do.
+ *
+ * The prose no longer claims no index applies — it names the index and the
+ * assumption that set it aside (docs/AUDIT-2026-08-03.md P0-3). What remains
+ * wrong is the path label alone.
  */
 const KNOWN_PATH_MISMATCHES = new Map<string, string>([
-  ['q08-distinct-hides-fanout/o', 'predicts seq-scan; PostgreSQL uses an Index Scan'],
+  ['q08-distinct-hides-fanout/o', 'predicts seq-scan; PostgreSQL drives it from a filtered chain and uses an Index Scan'],
 ]);
 
 interface Observed {

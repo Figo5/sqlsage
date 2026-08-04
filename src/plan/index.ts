@@ -155,7 +155,8 @@ function decidePath(block: QueryBlockIR, relation: RelationIR, catalog: Catalog)
     };
   }
 
-  const lookup = joinLookupIndex(block, relation, catalog);
+  const declinedLookups: DeclinedLookup[] = [];
+  const lookup = joinLookupIndex(block, relation, catalog, declinedLookups);
   if (lookup) {
     return {
       path: 'index-scan',
@@ -171,11 +172,19 @@ function decidePath(block: QueryBlockIR, relation: RelationIR, catalog: Catalog)
   // for one. Saying "no index begins with their referenced columns" there is
   // false and sends the reader off to create an index that already exists.
   const wrongMethod = mismatchedLeadingIndexes(relation, catalog);
+  const declined = declinedLookups[0];
   const reason = nonSargable.length
     ? `Offline prediction: no existing leading-key access path can evaluate ${naturalList(nonSargable.map((predicate) => code(predicate.sql)))} as a seek, so PostgreSQL is likely to read ${formatRows(table.rowCount, relation.source)} and apply the condition to rows. A live EXPLAIN is required to confirm parallelism.`
     : wrongMethod.length
       ? `Offline prediction: ${naturalList(wrongMethod.map(({ index, predicate }) => `${code(index.name)} leads with ${code(index.columns[0]!)} but is a ${index.method.toUpperCase()} index, which does not implement ${code(predicate.sql)}`))}. PostgreSQL cannot use ${wrongMethod.length > 1 ? 'those indexes' : 'that index'} for this condition and is likely to read ${formatRows(table.rowCount, relation.source)} instead. A method that supports this operator would be required, not merely an index on the same column.`
-      : relation.localPredicates.length
+      : declined
+        // Saying "no index begins with the referenced columns" here would be
+        // false: one begins with the join key. It was set aside only because
+        // this join's own driver looks large, and that view is local — the
+        // planner may reach this relation after earlier filters in the chain
+        // have already narrowed the input. Name the index and the assumption.
+        ? `Offline prediction: no index serves the row conditions, so ${formatRows(table.rowCount, relation.source)} is the leading candidate. ${code(declined.index.name)} does lead with join key ${code(declined.column)}, but ${code(declined.driverAlias)} is estimated at ${formatEstimate(declined.driverRows)} rows, too many for repeated lookups to be the obvious choice. That estimate ignores filters applied elsewhere in the join chain, so if the planner reaches this relation with a much smaller driver it will use that index instead — a live EXPLAIN settles it.`
+        : relation.localPredicates.length
         ? `Offline prediction: the row conditions are structurally seekable in isolation, but no existing index begins with their referenced columns. Reading ${formatRows(table.rowCount, relation.source)} is therefore the leading candidate.`
         : `Offline prediction: no local condition narrows ${code(relation.source)} and no small-driver lookup is established, so a sequential read of ${formatRows(table.rowCount, relation.source)} is the conservative candidate.`;
   return { path: 'seq-scan', estimatedRows, reason };
@@ -298,10 +307,18 @@ function orderSupplyingIndex(block: QueryBlockIR, relation: RelationIR, table: T
   );
 }
 
+interface DeclinedLookup {
+  index: IndexDef;
+  column: string;
+  driverAlias: string;
+  driverRows: number;
+}
+
 function joinLookupIndex(
   block: QueryBlockIR,
   relation: RelationIR,
   catalog: Catalog,
+  declined: DeclinedLookup[] = [],
 ): { index: IndexDef; column: string; rowsPerLookup?: number; uncertain: boolean } | undefined {
   for (const join of block.joins) {
     for (const key of join.equiKeys) {
@@ -314,7 +331,15 @@ function joinLookupIndex(
       const otherTable = otherRelation ? findTable(catalog, otherRelation.source) : undefined;
       const driverRows = otherRelation?.estimatedRows ?? (otherRelation?.localPredicates.length ? undefined : otherTable?.rowCount);
       const uncertain = driverRows === undefined;
-      if (!uncertain && driverRows! > 100_000) continue;
+      if (!uncertain && driverRows! > 100_000) {
+        // Rejected only on this join's own driver, which is a local view: the
+        // planner may reach this relation late in a chain whose earlier
+        // filters have already narrowed the input far below this count. Record
+        // it so the fallback can say an index exists and why it was not
+        // claimed, instead of implying none applies.
+        declined.push({ index, column: local.column, driverAlias: other.alias ?? '(unknown)', driverRows: driverRows! });
+        continue;
+      }
       let perLookup = rowsPerKey(catalog, relation.source, [local.column]);
       for (const predicate of relation.localPredicates) {
         if (predicate.selectivity !== undefined && perLookup !== undefined) perLookup *= predicate.selectivity;
