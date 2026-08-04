@@ -14,3 +14,15 @@ scratch/
 docs/PRODUCT-ROADMAP.md
 docs/AUDIT-2026-08-03.md
 docs/RELEASING.md
+
+# Machine-local agent config. The skills themselves are a deliberate
+# commit-or-not call and are left visible; only per-machine settings are
+# ignored here.
+.claude/settings.local.json
+.claude/launch.json
+
+# Impeccable design tool: runtime state (sessions, locks, servers, receipts)
+# and per-machine config. `.impeccable/sketches/` and `design.json` are the
+# design source of truth referenced by the docs theme — not ignored.
+.impeccable/config.local.json
+.impeccable/live/

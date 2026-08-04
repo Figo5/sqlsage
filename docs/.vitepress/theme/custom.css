@@ -1,65 +1,764 @@
-/* SQLSage site theme — dark, terminal-green accent. */
+/* SQLSage site theme — QUERY-CONSOLE.
+ *
+ * Every page reads as being inside a live `sqlsage` terminal session. Warm
+ * near-black void, serif prose, mono chrome. Green is the single accent —
+ * prompts, active states, keywords, CTAs — and amber appears only where the
+ * tool is telling you something is wrong (wrong-result risk, safety warnings).
+ *
+ * Token set: taken verbatim from the two ground-truth mockups' `:root` blocks
+ * (.impeccable/sketches/sqlsage-home-mockup.html, sqlsage-docs-mockup.html),
+ * unified on green per the owner's decision.
+ */
 
 :root {
-  --vp-c-brand-1: #3fb950;
-  --vp-c-brand-2: #4fd16c;
-  --vp-c-brand-3: #2ea043;
+  /* Palette ------------------------------------------------------------- */
+  --q-void: #0d0c0a;          /* the page: warm near-black void */
+  --q-void-raised: #141310;   /* surfaces: terminal, cards, code */
+  --q-paper: #ede6d6;         /* primary ink */
+  --q-muted: #9a927c;         /* secondary ink */
+  --q-green: #3fb950;         /* the single accent — prompts, active, keywords */
+  --q-green-dim: #1f5c2c;     /* selection, primary fills */
+  --q-amber: #d08a3e;         /* warnings and wrong-result alerts only */
+  --q-border: #282419;        /* hairline rules */
+
+  /* VitePress bindings -------------------------------------------------- */
+  --vp-c-bg: var(--q-void);
+  --vp-c-bg-alt: var(--q-void);
+  --vp-c-bg-soft: var(--q-void-raised);
+  --vp-c-bg-soft-up: var(--q-void-raised);
+  --vp-c-bg-elv: var(--q-void-raised);
+  --vp-c-bg-elv-up: var(--q-void-raised);
+  --vp-c-bg-elv-mute: var(--q-void-raised);
+  --vp-c-bg-elv-down: var(--q-void);
+
+  --vp-c-divider: var(--q-border);
+  --vp-c-divider-light: var(--q-border);
+  --vp-c-divider-dark: var(--q-border);
+  --vp-c-gutter: var(--q-border);
+
+  --vp-c-text-1: var(--q-paper);
+  --vp-c-text-2: var(--q-muted);
+  --vp-c-text-3: var(--q-muted);
+
+  --vp-c-brand-1: var(--q-green);
+  --vp-c-brand-2: var(--q-green);
+  --vp-c-brand-3: var(--q-green-dim);
   --vp-c-brand-soft: rgba(63, 185, 80, 0.16);
 
-  --vp-c-bg: #07090a;
-  --vp-c-bg-alt: #0b0e10;
-  --vp-c-bg-soft: #0e1214;
-  --vp-c-bg-soft-up: #12171a;
-
-  --vp-c-divider: rgba(148, 163, 184, 0.14);
-  --vp-c-divider-light: rgba(148, 163, 184, 0.1);
-
-  --vp-c-text-1: #e6edf3;
-  --vp-c-text-2: #aeb8c4;
-  --vp-c-text-3: #76848f;
-
-  --sql-cyan: #38bdf8;
-  --sql-violet: #a78bfa;
-  --sql-amber: #fbbf24;
-  --sql-red: #f85149;
-
-  --vp-font-family-base: 'Inter', ui-sans-serif, system-ui, -apple-system,
-    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --vp-font-family-mono: 'SF Mono', ui-monospace, SFMono-Regular, Menlo,
+  --vp-font-family-base: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --vp-font-family-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo,
     Consolas, 'Liberation Mono', monospace;
+
+  /* Code */
+  --vp-code-bg: var(--q-void-raised);
+  --vp-code-block-bg: var(--q-void-raised);
+  --vp-code-border: var(--q-border);
+  --vp-code-lang-color: var(--q-muted);
+  --vp-code-copy-code-bg: transparent;
+  --vp-code-copy-code-hover-bg: var(--q-void);
+  --vp-code-copy-code-hover-text: var(--q-paper);
+  --vp-code-copy-code-active-bg: var(--q-void);
+  --vp-code-copy-code-active-text: var(--q-paper);
+
+  /* Tables (result-table chrome) */
+  --vp-table-border: var(--q-border);
+  --vp-table-header-bg: transparent;
+
+  /* Custom blocks — terminal alerts */
+  --vp-custom-block-warning-border: var(--q-amber);
+  --vp-custom-block-warning-text: var(--q-amber);
+  --vp-custom-block-warning-bg: var(--q-void-raised);
+  --vp-custom-block-warning-code-bg: var(--q-void);
+  --vp-custom-block-tip-border: var(--q-green);
+  --vp-custom-block-tip-text: var(--q-green);
+  --vp-custom-block-tip-bg: var(--q-void-raised);
+  --vp-custom-block-tip-code-bg: var(--q-void);
+  --vp-custom-block-danger-border: var(--q-amber);
+  --vp-custom-block-danger-text: var(--q-amber);
+  --vp-custom-block-danger-bg: var(--q-void-raised);
+  --vp-custom-block-danger-code-bg: var(--q-void);
+  --vp-custom-block-info-border: var(--q-border);
+  --vp-custom-block-info-text: var(--q-paper);
+  --vp-custom-block-info-bg: var(--q-void-raised);
+  --vp-custom-block-info-code-bg: var(--q-void);
+
+  /* Buttons */
+  --vp-button-brand-bg: var(--q-green-dim);
+  --vp-button-brand-hover-bg: var(--q-green);
+  --vp-button-brand-text: var(--q-paper);
+  --vp-button-brand-border: var(--q-green);
+  --vp-button-brand-hover-border: var(--q-green);
+  --vp-button-brand-active-bg: var(--q-green);
+  --vp-button-brand-active-text: var(--q-paper);
+  --vp-button-brand-active-border: var(--q-green);
+  --vp-button-alt-bg: var(--q-void-raised);
+  --vp-button-alt-hover-bg: var(--q-void-raised);
+  --vp-button-alt-text: var(--q-muted);
+  --vp-button-alt-hover-text: var(--q-paper);
+  --vp-button-alt-border: var(--q-border);
+  --vp-button-alt-hover-border: var(--q-green);
+  --vp-button-alt-active-bg: var(--q-void-raised);
+  --vp-button-alt-active-text: var(--q-paper);
+  --vp-button-alt-active-border: var(--q-green);
+
+  --vp-nav-bg-color: var(--q-void);
+  --vp-sidebar-bg-color: var(--q-void);
+  --vp-layout-max-width: 1440px;
+  --vp-sidebar-width: 272px;
 }
 
-/* Brand-colored link hovers and focus rings follow the green accent. */
+/* The world is dark-only (force-dark); mirror the bindings under .dark so the
+ * site never falls back to a light theme's variables. */
 .dark {
-  --vp-c-brand-1: #3fb950;
-  --vp-c-brand-2: #4fd16c;
-  --vp-c-brand-3: #2ea043;
+  --vp-c-bg: var(--q-void);
+  --vp-c-bg-alt: var(--q-void);
+  --vp-c-bg-soft: var(--q-void-raised);
+  --vp-c-bg-soft-up: var(--q-void-raised);
+  --vp-c-bg-elv: var(--q-void-raised);
+  --vp-c-bg-elv-up: var(--q-void-raised);
+  --vp-c-bg-elv-mute: var(--q-void-raised);
+  --vp-c-bg-elv-down: var(--q-void);
+  --vp-c-divider: var(--q-border);
+  --vp-c-divider-light: var(--q-border);
+  --vp-c-divider-dark: var(--q-border);
+  --vp-c-gutter: var(--q-border);
+  --vp-c-text-1: var(--q-paper);
+  --vp-c-text-2: var(--q-muted);
+  --vp-c-text-3: var(--q-muted);
+  --vp-c-brand-1: var(--q-green);
+  --vp-c-brand-2: var(--q-green);
+  --vp-c-brand-3: var(--q-green-dim);
+  --vp-c-brand-soft: rgba(63, 185, 80, 0.16);
 }
 
-.VPNavBarTitle .title {
-  font-weight: 700;
-  letter-spacing: -0.01em;
+/* Base ------------------------------------------------------------------ */
+html,
+body {
+  background-color: var(--q-void);
+  color: var(--q-paper);
 }
 
-/* Shared landing helpers ------------------------------------------------- */
-
-.sql-grid-bg {
-  background-image: linear-gradient(rgba(63, 185, 80, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(63, 185, 80, 0.05) 1px, transparent 1px);
-  background-size: 44px 44px;
+::selection {
+  background: var(--q-green-dim);
+  color: var(--q-paper);
 }
 
-.sql-noise::after {
+/* Topbar (VitePress nav) ------------------------------------------------ */
+.VPNavBar {
+  border-bottom: 1px solid var(--q-border);
+  background: var(--q-void);
+}
+
+/* Brand: the mockup's two-tone sql·sage wordmark replaces the default
+ * logo + title text. The title node is suppressed via `siteTitle: false`
+ * and the logo key is removed (config.mts), so there is nothing to hide —
+ * the wordmark below is the title area's only content. */
+.VPNavBarTitle .title .q-brand {
+  font-family: var(--vp-font-family-mono);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--q-paper);
+}
+.q-brand .q-brand-sage {
+  color: var(--q-green);
+}
+
+/* Nav links are mono chrome, muted → paper. */
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup .VPNavBarMenuGroup > button {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--q-muted);
+  letter-spacing: 0.02em;
+}
+.VPNavBarMenuLink:hover,
+.VPNavBarMenuLink.active,
+.VPNavBarMenuGroup .VPNavBarMenuGroup > button:hover,
+.VPNavBarMenuGroup .VPNavBarMenuGroup > button.active {
+  color: var(--q-paper);
+}
+
+/* Dropdown menu */
+.VPNavBarMenuGroup .VPMenu {
+  background: var(--q-void-raised);
+  border: 1px solid var(--q-border);
+}
+.VPNavBarMenuGroup .VPMenu .link {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  color: var(--q-muted);
+}
+.VPNavBarMenuGroup .VPMenu .link:hover {
+  color: var(--q-paper);
+}
+
+/* Search: the mockup's ⌘K kbd chip. */
+.VPNavBarSearch .DocSearch-Button {
+  background: transparent;
+  border: 1px solid var(--q-border);
+  border-radius: 4px;
+  font-family: var(--vp-font-family-mono);
+}
+.VPNavBarSearch .DocSearch-Button:hover {
+  border-color: var(--q-green);
+}
+.VPNavBarSearch .DocSearch-Button .DocSearch-Search-Icon {
+  color: var(--q-muted);
+}
+.VPNavBarSearch .DocSearch-Button .DocSearch-Button-Placeholder {
+  font-size: 12.5px;
+  color: var(--q-muted);
+}
+.VPNavBarSearch .DocSearch-Button .DocSearch-Button-Keys .DocSearch-Button-Key {
+  font-family: var(--vp-font-family-mono);
+  border: 1px solid var(--q-border);
+  border-radius: 4px;
+  color: var(--q-muted);
+  background: transparent;
+}
+
+.VPNavBarHamburger {
+  color: var(--q-paper);
+}
+.VPNavBarHamburger:hover {
+  color: var(--q-green);
+}
+
+/* Sidebar shell --------------------------------------------------------- */
+.VPSidebar {
+  background: var(--q-void);
+  border-right: 1px solid var(--q-border);
+}
+
+/* The default VitePress sidebar groups are replaced by the query-console
+ * tree (injected via the Layout's `sidebar-nav-before` slot). Hide the
+ * hardcoded groups so only the tree renders, in the desktop aside and the
+ * mobile drawer alike. */
+.VPSidebar nav.nav > .group {
+  display: none;
+}
+
+/* Doc content ----------------------------------------------------------- */
+
+/* Headings read as SQL comments: `-- Title`. The dash is a dim accent, the
+ * title the accent green for h1, paper for deeper levels. */
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3 {
+  font-family: var(--vp-font-family-mono);
+  letter-spacing: 0.01em;
+  font-weight: 500;
+}
+.vp-doc h1 {
+  color: var(--q-green);
+  font-size: 26px;
+  line-height: 1.35;
+  margin-top: 0;
+  margin-bottom: 22px;
+}
+.vp-doc h1::before,
+.vp-doc h2::before,
+.vp-doc h3::before {
+  content: '-- ';
+  color: var(--q-green-dim);
+  font-weight: 400;
+}
+.vp-doc h2 {
+  color: var(--q-paper);
+  font-size: 17px;
+  line-height: 1.4;
+  margin-top: 2.2em;
+  margin-bottom: 0.9em;
+}
+.vp-doc h3 {
+  color: var(--q-paper);
+  font-size: 14.5px;
+  line-height: 1.4;
+  margin-top: 1.8em;
+  margin-bottom: 0.8em;
+}
+
+/* Prose: Source Serif 4, warm, narrow measure. */
+.vp-doc {
+  font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+}
+.vp-doc p {
+  font-size: 16.5px;
+  line-height: 1.75;
+  color: var(--q-paper);
+  margin-bottom: 18px;
+  max-width: 62ch;
+}
+.vp-doc ul,
+.vp-doc ol {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--q-paper);
+}
+.vp-doc li {
+  margin: 6px 0;
+}
+.vp-doc strong {
+  color: var(--q-paper);
+  font-weight: 500;
+}
+.vp-doc a {
+  color: var(--q-green);
+  text-decoration: underline;
+  text-decoration-color: var(--q-border);
+  text-underline-offset: 3px;
+}
+.vp-doc a:hover {
+  color: var(--q-paper);
+  text-decoration-color: var(--q-green);
+}
+.vp-doc hr {
+  border: 0;
+  border-top: 1px solid var(--q-border);
+  margin: 2.2em 0;
+}
+.vp-doc blockquote {
+  border-left: 1px solid var(--q-border);
+  color: var(--q-muted);
+  font-style: italic;
+}
+
+/* Inline code: a bordered mono chip, accent text. */
+.vp-doc :not(pre) > code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 14px;
+  background: var(--q-void-raised);
+  border: 1px solid var(--q-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--q-green);
+}
+
+/* Code blocks: terminal-session chrome. */
+.vp-doc div[class*='language-'] {
+  position: relative;
+  margin: 28px 0;
+  border: 1px solid var(--q-border);
+  border-radius: 6px;
+  background: var(--q-void-raised);
+  overflow: hidden;
+  padding-top: 34px;
+}
+.vp-doc div[class*='language-']::before {
   content: '';
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.06;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 34px;
+  border-bottom: 1px solid var(--q-border);
+}
+.vp-doc div[class*='language-'] .lang {
+  position: absolute;
+  top: 9px;
+  left: 16px;
+  right: auto;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--q-muted);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+.vp-doc div[class*='language-'] .copy {
+  top: 7px;
+  right: 12px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--q-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--q-muted);
+  opacity: 1;
+}
+.vp-doc div[class*='language-'] .copy:hover {
+  border-color: var(--q-green);
+  color: var(--q-paper);
+  background: transparent;
+}
+.vp-doc div[class*='language-'] pre {
+  background: transparent;
+  padding: 14px 20px 18px;
+}
+.vp-doc div[class*='language-'] .vp-code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--q-paper);
+}
+.vp-doc .language-text .line {
+  color: var(--q-muted);
+}
+
+/* Markdown tables: result-table chrome (muted header, hairline rules). */
+.vp-doc .table-container {
+  margin: 24px 0;
+}
+.vp-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 8px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  color: var(--q-paper);
+}
+/* Horizontal rules only, psql result-set style: VitePress's default
+ * `border: 1px solid` on cells (supplying left/right/top) and its
+ * row-level `border-top` are both zeroed, leaving just the hairline
+ * border-bottoms below — no vertical column rules, no outer box.
+ * The flush-left padding (padding-left: 0) matches the mockup. */
+.vp-doc tr {
+  border-top: 0;
+}
+.vp-doc th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--q-muted);
+  padding: 6px 16px 8px 0;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  border-bottom: 1px solid var(--q-border);
+  background: transparent;
+}
+.vp-doc td {
+  padding: 6px 16px 6px 0;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  border-bottom: 1px solid var(--q-void-raised);
+  color: var(--q-paper);
+}
+.vp-doc tr:nth-child(2n) {
+  background: transparent;
+}
+.vp-doc td code,
+.vp-doc th code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--q-green);
+  font-size: 13px;
+}
+
+/* Admonitions: terminal alerts — framed mono, ⚑ marker, type-tinted. */
+.vp-doc .custom-block {
+  font-family: var(--vp-font-family-mono);
+  font-size: 13.5px;
+  line-height: 1.8;
+  border: 1px solid var(--q-border);
+  border-radius: 6px;
+  background: var(--q-void-raised);
+  padding: 16px 20px;
+  margin: 28px 0;
+}
+.vp-doc .custom-block .custom-block-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  margin-bottom: 8px;
+}
+.vp-doc .custom-block .custom-block-title::before {
+  content: '⚑ ';
+}
+.vp-doc .custom-block .custom-block-body {
+  color: var(--q-muted);
+}
+.vp-doc .custom-block .custom-block-body a {
+  color: var(--q-green);
+}
+.vp-doc .custom-block .custom-block-body code {
+  background: var(--q-void);
+  border: 0;
+  color: var(--q-paper);
+}
+.vp-doc .custom-block.warning {
+  border-color: var(--q-amber);
+}
+.vp-doc .custom-block.warning .custom-block-title {
+  color: var(--q-amber);
+}
+.vp-doc .custom-block.tip,
+.vp-doc .custom-block.info {
+  border-color: var(--q-green);
+}
+.vp-doc .custom-block.tip .custom-block-title,
+.vp-doc .custom-block.info .custom-block-title {
+  color: var(--q-green);
+}
+.vp-doc .custom-block.danger {
+  border-color: var(--q-amber);
+}
+.vp-doc .custom-block.danger .custom-block-title {
+  color: var(--q-amber);
+}
+
+/* TOC outline ------------------------------------------------------------ */
+.VPDocAsideOutline .outline-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--q-muted);
+}
+.VPDocAsideOutline .outline-item {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  line-height: 1.9;
+}
+.VPDocAsideOutline .outline-link {
+  color: var(--q-muted);
+}
+.VPDocAsideOutline .outline-link:hover {
+  color: var(--q-paper);
+}
+.VPDocAsideOutline .outline-link.active {
+  color: var(--q-green);
+}
+
+/* Prev / next doc footer ------------------------------------------------- */
+.VPDocFooter {
+  border-top: 1px solid var(--q-border);
+  margin-top: 3rem;
+  padding-top: 2rem;
+}
+.VPDocFooter .pager-link {
+  background: var(--q-void);
+  border: 1px solid var(--q-border);
+  border-radius: 6px;
+  padding: 1rem 1.2rem;
+}
+.VPDocFooter .pager-link:hover {
+  border-color: var(--q-green);
+  background: var(--q-void);
+}
+.VPDocFooter .pager-subtitle {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  color: var(--q-muted);
+}
+.VPDocFooter .pager-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--q-paper);
+}
+.VPDocFooter .pager-link:hover .pager-title {
+  color: var(--q-green);
+}
+
+/* Edit link / last-updated */
+.VPDocFooterEditLink .edit-link-button {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  color: var(--q-muted);
+}
+.VPDocFooterEditLink .edit-link-button:hover {
+  color: var(--q-green);
+}
+.VPPageLastUpdated {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  color: var(--q-muted);
+}
+
+/* Search modal (local search) -------------------------------------------- */
+.VPLocalSearchBox {
+  background: var(--q-void-raised);
+  border: 1px solid var(--q-border);
+}
+.VPLocalSearchBox .search-input {
+  font-family: var(--vp-font-family-mono);
+  font-size: 13.5px;
+  color: var(--q-paper);
+}
+.VPLocalSearchBox .search-input::placeholder {
+  color: var(--q-muted);
+}
+.VPLocalSearchBox .search-keyword {
+  font-family: var(--vp-font-family-mono);
+  color: var(--q-green);
+}
+.VPLocalSearchBox .search-suggestions {
+  border-color: var(--q-border);
+}
+.VPLocalSearchBox .result {
+  border-color: var(--q-border);
+}
+.VPLocalSearchBox .result-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  color: var(--q-paper);
+}
+.VPLocalSearchBox .result-excerpt {
+  font-size: 12.5px;
+  color: var(--q-muted);
+}
+.VPLocalSearchBox .result-item:hover {
+  background: var(--q-void);
+}
+
+/* Mobile screen (drawer) ------------------------------------------------- */
+.VPNavScreen {
+  background: var(--q-void);
+  border-bottom: 1px solid var(--q-border);
+}
+.VPNavScreen .VPNavScreenMenuLink,
+.VPNavScreen .VPNavScreenMenuGroup > button {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  color: var(--q-muted);
+}
+.VPNavScreen .VPNavScreenMenuLink:hover,
+.VPNavScreen .VPNavScreenMenuLink.active {
+  color: var(--q-green);
+}
+.VPNavScreen .VPNavScreenMenuGroup .link {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  color: var(--q-muted);
+}
+
+/* Footer ----------------------------------------------------------------- */
+.VPFooter {
+  border-top: 1px solid var(--q-border);
+  background: var(--q-void);
+}
+.VPFooter .message,
+.VPFooter .copyright {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11.5px;
+  color: var(--q-muted);
+}
+.VPFooter .message a {
+  color: var(--q-green);
+}
+
+/* Shared terminal-session chrome -----------------------------------------
+ * Used by the home signature panel (TerminalDemo) and the reusable
+ * TerminalSession component. Matches the mockups' .term blocks, green. */
+.q-term {
+  background: var(--q-void-raised);
+  border: 1px solid var(--q-border);
+  border-radius: 7px;
+  overflow: hidden;
+  text-align: left;
+}
+.q-term-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--q-border);
+}
+.q-term-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.q-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--q-border);
+}
+.q-term-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11.5px;
+  color: var(--q-muted);
+}
+.q-term-tag {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  color: var(--q-muted);
+  border: 1px solid var(--q-border);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+.q-term-body {
+  padding: 20px 22px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  line-height: 1.85;
+  text-align: left;
+}
+.q-line {
+  color: var(--q-paper);
+  white-space: pre-wrap;
+}
+.q-prompt {
+  color: var(--q-green);
+}
+.q-kw {
+  color: var(--q-green);
+}
+.q-muted {
+  color: var(--q-muted);
+}
+.q-label {
+  color: var(--q-muted);
+}
+.q-warn {
+  color: var(--q-amber);
+}
+.q-ev {
+  color: var(--q-green);
+  font-size: 11.5px;
+}
+.q-indent {
+  padding-left: 18px;
+}
+.q-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--q-green);
+  vertical-align: -2px;
+  margin-left: 2px;
+  animation: q-blink 1s step-start infinite;
+}
+.q-result {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 8px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+}
+.q-result th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--q-muted);
+  padding: 6px 14px 8px 0;
+  border-bottom: 1px solid var(--q-border);
+}
+.q-result td {
+  padding: 6px 14px 6px 0;
+  color: var(--q-paper);
+  border-bottom: 1px solid var(--q-void);
+}
+.q-row-count {
+  color: var(--q-muted);
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+@keyframes q-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
