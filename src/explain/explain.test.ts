@@ -115,3 +115,38 @@ test('a non-injective cast equality does not fix the grouping value', () => {
   );
   assert.doesNotMatch(notFixed.resultShape.grain, /At most one row/);
 });
+
+// ---------------------------------------------------------------------------
+// Shapes that were described as if fully understood while only part of the
+// query had been modelled. See docs/AUDIT-2026-08-03.md P0-5.
+// ---------------------------------------------------------------------------
+
+test('a comma cross join is not described as one row per left relation', () => {
+  // Two relations, no join condition: this returns the Cartesian product. It
+  // used to produce no JoinIR at all, and so was described as "one row per
+  // qualifying customer row" — 200,000 rows claimed for 10 billion.
+  const semantics = explainSemantics(
+    bindQuery('SELECT c.customer_id, p.product_id FROM shop.customers c, shop.products p;', catalog),
+    catalog,
+  );
+  assert.match(semantics.resultShape.grain, /joined combination/i);
+  assert.doesNotMatch(semantics.resultShape.grain, /one row per qualifying `?customer/i);
+});
+
+test('a set operation is described as one, not as its left arm', () => {
+  const grain = (sql: string) => explainSemantics(bindQuery(sql, catalog), catalog).resultShape.grain;
+
+  const unionAll = grain(`
+    SELECT c.customer_id FROM shop.customers c WHERE c.is_active
+    UNION ALL
+    SELECT o.customer_id FROM shop.orders o WHERE o.status = 'complete';`);
+  assert.match(unionAll, /concatenated without deduplication/i);
+  // The old wording named one arm's block id and silently dropped the other.
+  assert.doesNotMatch(unionAll, /one row per qualifying/i);
+
+  const union = grain(`
+    SELECT c.customer_id FROM shop.customers c
+    UNION
+    SELECT o.customer_id FROM shop.orders o;`);
+  assert.match(union, /duplicates removed across both arms/i);
+});

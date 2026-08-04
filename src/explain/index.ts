@@ -327,7 +327,33 @@ function semanticCaveats(
   return dedupeCaveats(caveats);
 }
 
+/**
+ * Grain of a set operation, which is not the grain of either arm.
+ *
+ * The binder exposes the left arm's projections on the set-op block so the
+ * result's columns can be named. Falling through to the ordinary logic then
+ * described the whole statement as "one row per qualifying `main#1` row" — the
+ * left arm alone, with the right arm's rows silently absent from the claim.
+ */
+function setOperationGrain(root: QueryBlockIR): string | undefined {
+  if (!root.setOp) return undefined;
+  const arms = root.relations.map((relation) => code(relation.source));
+  const both = arms.length === 2 ? `${arms[0]} and ${arms[1]}` : naturalList(arms);
+  switch (root.setOp.op) {
+    case 'union-all':
+      return `Every row from ${both}, concatenated without deduplication — the arms' row counts add`;
+    case 'union':
+      return `Each distinct row appearing in ${both}, with duplicates removed across both arms`;
+    case 'intersect':
+      return `Each distinct row appearing in both ${both}`;
+    case 'except':
+      return `Each distinct row of ${arms[0]} that does not appear in ${arms[1]}`;
+  }
+}
+
 function resultGrain(root: QueryBlockIR, catalog: Catalog): string {
+  const setOp = setOperationGrain(root);
+  if (setOp) return setOp;
   const groups = root.groupByExpressions?.length
     ? root.groupByExpressions.map((expression) => expression.sql)
     : root.groupBy.map(columnLabel);

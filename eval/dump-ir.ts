@@ -394,7 +394,11 @@ function runChecks(): number {
     catalog,
   );
   ok(chainedUsingWithSibling.bindingErrors.some((error) => error.message.includes('"k" is ambiguous')), 'round-3: a chained merged key remains ambiguous with a later sibling output');
-  equal(chainedUsingWithSibling.blocks.find((block) => block.id === 'main')!.joins.map((join) => join.equiKeys.length), [1, 1], 'round-3: sibling ambiguity does not break a chained USING namespace');
+  // Three joins, not two: the trailing `, (VALUES (1)) d(k)` is a comma cross
+  // join and is recorded as one, with no equality keys. It previously produced
+  // no JoinIR at all, which is how `FROM a, b` came to be described as one row
+  // per `a` row. See docs/AUDIT-2026-08-03.md P0-5.
+  equal(chainedUsingWithSibling.blocks.find((block) => block.id === 'main')!.joins.map((join) => join.equiKeys.length), [1, 1, 0], 'round-3: sibling ambiguity does not break a chained USING namespace');
 
   // A BitmapOr belongs to one heap relation. Indexable leaves across join
   // inputs are not a scan-level sargability proof.
@@ -633,10 +637,18 @@ function runChecks(): number {
   equal(commaQ06.joins.length, 2, 'comma join: both implied joins are recovered');
   equal(multiplied(commaQ06), ['c', 'o'], 'comma join: q06 in comma form reports the same multiplicity as ANSI form');
 
-  // A comma relation with no equating predicate is a real cross join; do not
-  // invent a join for it.
+  // A comma relation with no equating predicate is a real cross join, and is
+  // recorded as one. This previously asserted zero joins, on the reasoning that
+  // synthesizing one would be inventing a join that is not there. But the join
+  // *is* there — it is what the comma means — and dropping it left the block
+  // with no JoinIR, so `FROM customers c, products p` was explained as "one row
+  // per qualifying customer row" for a Cartesian product of ten billion rows.
+  // Recording a cross join reports the SQL as written. See
+  // docs/AUDIT-2026-08-03.md P0-5.
   const commaCross = bindQuery('SELECT * FROM shop.customers c, shop.products p', catalog).blocks[0]!;
-  equal(commaCross.joins.length, 0, 'comma join: an unequated comma relation is not given an invented join');
+  equal(commaCross.joins.length, 1, 'comma join: an unequated comma relation is recorded as the cross join it is');
+  equal(commaCross.joins[0]!.type, 'cross', 'comma join: and it is typed as a cross join');
+  equal(commaCross.joins[0]!.fanOut, true, 'comma join: a Cartesian product multiplies unconditionally');
 
   // A correlated LATERAL carries its join condition inside its own block, so the
   // outer ON reads `ON true` and only *looks* keyless. Treating it as keyless

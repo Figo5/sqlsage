@@ -765,7 +765,28 @@ class Binder {
         else if (bAlias === rightAlias && aAlias && previousAliases.has(aAlias)) equiKeys.push({ left: a, right: b });
       }
 
-      if (equiKeys.length === 0) continue; // genuine cross join; do not invent one
+      if (equiKeys.length === 0) {
+        // A comma with no join condition IS a cross join. Recording one is not
+        // inventing a join, it is reporting the SQL as written — and dropping
+        // it left the block with no JoinIR at all, so `FROM customers c,
+        // products p` was described as "one row per qualifying customer row"
+        // when it returns their Cartesian product.
+        const fan = this.computeFanOut('cross', entry.rel, [], previous, previous[previous.length - 1]?.alias ?? '(unknown)');
+        const multiplied = this.currentMultiplied();
+        for (const alias of fan.multiplied) multiplied.add(alias);
+        block.joins.push({
+          type: 'cross',
+          leftRelation: previous[previous.length - 1]?.alias ?? '(unknown)',
+          rightRelation: rightAlias,
+          equiKeys: [],
+          residualPredicates: [],
+          fanOut: fan.fanOut,
+          fanOutReason: `${fan.reason} (an old-style comma join with no join condition in WHERE)`,
+          fanOutSide: fan.side,
+          multipliedRelations: fan.multiplied,
+        });
+        continue;
+      }
 
       const leftRelation = aliasOf(equiKeys[0]!.left) ?? previous[previous.length - 1]?.alias ?? '(unknown)';
       const fan = this.computeFanOut('inner', entry.rel, equiKeys, previous, leftRelation);
@@ -786,12 +807,6 @@ class Binder {
     }
   }
 
-  /**
-   * A join fans out when the right input is not unique on the join key: one
-   * left row can then match several right rows, multiplying it. Uniqueness is
-   * proven from the catalog (primary key / unique index) or, for a derived
-   * table, from its own GROUP BY or DISTINCT.
-   */
   /**
    * Fan-out for a correlated LATERAL, or `undefined` when the right side is not
    * one.
@@ -862,6 +877,12 @@ class Binder {
     return undefined;
   }
 
+  /**
+   * A join fans out when the right input is not unique on the join key: one
+   * left row can then match several right rows, multiplying it. Uniqueness is
+   * proven from the catalog (primary key / unique index) or, for a derived
+   * table, from its own GROUP BY or DISTINCT.
+   */
   private computeFanOut(
     type: JoinIR['type'],
     right: BoundRelation,
