@@ -301,3 +301,44 @@ test('grouping-key HAVING pushdown produces no fabricated performance claim', ()
   const result = corpusFindings('q10');
   assert.deepEqual(result, []);
 });
+
+// ---------------------------------------------------------------------------
+// Fan-out sensitivity is decided by whether feeding a row twice can change the
+// answer — not by whether the function is one of the obvious additive ones.
+// See docs/AUDIT-2026-08-03.md.
+// ---------------------------------------------------------------------------
+
+test('duplicate-sensitive aggregates are flagged beyond the additive ones', () => {
+  const fanOut = (call: string) => `
+    SELECT c.customer_id, ${call}
+    FROM shop.customers c
+    JOIN shop.orders o ON o.customer_id = c.customer_id
+    JOIN shop.order_items oi ON oi.order_id = o.order_id
+    GROUP BY c.customer_id;`;
+  const flagged = (call: string) =>
+    findings(fanOut(call)).some((finding) => finding.id === 'aggregate-over-one-to-many-fanout');
+
+  // Dispersion, regression and distribution aggregates are all weighted by how
+  // many rows carry each value, so an uneven fan-out moves them.
+  for (const call of [
+    'sum(o.total_cents)',
+    'stddev(o.total_cents)',
+    'variance(o.total_cents)',
+    'corr(o.total_cents, o.order_id)',
+    'percentile_cont(0.5) WITHIN GROUP (ORDER BY o.total_cents)',
+    'mode() WITHIN GROUP (ORDER BY o.total_cents)',
+  ]) {
+    assert.equal(flagged(call), true, `${call} should be flagged under a fan-out`);
+  }
+
+  // Idempotent aggregates must NOT be flagged: repeating a row cannot change
+  // min/max, and `x AND x = x`, `x | x = x`. Flagging them is a false positive.
+  for (const call of [
+    'min(o.total_cents)',
+    'max(o.total_cents)',
+    'bool_and(o.total_cents > 0)',
+    'bit_or(o.total_cents)',
+  ]) {
+    assert.equal(flagged(call), false, `${call} is idempotent and must not be flagged`);
+  }
+});

@@ -73,6 +73,7 @@ export function buildPredicate(expr: Expr, clause: Clause, ctx: PredicateContext
     clause,
   };
   if (negated) pred.negated = true;
+  if (containsAggregate(expr)) pred.hasAggregate = true;
   if (kind === 'equality' && !negated) recordEqualityOperands(expr, ctx, pred);
   const sel = estimateSelectivity(expr, ctx, kind, negated);
   if (sel !== undefined) pred.selectivity = clamp(sel);

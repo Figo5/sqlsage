@@ -28,15 +28,34 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 4,
 };
 
+/**
+ * Aggregates whose result changes when a join fans the input out.
+ *
+ * The test is whether feeding a row twice can change the answer. A fan-out does
+ * not duplicate rows uniformly, so anything weighted by row count, order, or
+ * distribution belongs here — not just the obvious additive ones.
+ *
+ * Deliberately excluded, because repeating a row cannot change their value:
+ * `min`, `max`, `bool_and`, `bool_or`, `every`, `bit_and`, `bit_or`, and
+ * `range_intersect_agg`. Each is idempotent — `x AND x = x`, `x & x = x`,
+ * `max(a, a) = a` — so a fan-out inflates the row count without moving the
+ * result, and flagging them would be a false positive.
+ */
 const DUPLICATE_SENSITIVE_AGGREGATES = new Set([
-  'sum',
-  'avg',
-  'count',
-  'array_agg',
-  'json_agg',
-  'jsonb_agg',
-  'string_agg',
-  'xmlagg',
+  // Additive and counting.
+  'sum', 'avg', 'count',
+  // Collecting: every duplicate becomes another element.
+  'array_agg', 'string_agg', 'json_agg', 'jsonb_agg',
+  'json_object_agg', 'jsonb_object_agg', 'xmlagg', 'range_agg',
+  // Dispersion: weighted by how many rows carry each value.
+  'stddev', 'stddev_pop', 'stddev_samp',
+  'variance', 'var_pop', 'var_samp',
+  // Regression and correlation: computed over row pairs.
+  'corr', 'covar_pop', 'covar_samp',
+  'regr_slope', 'regr_intercept', 'regr_count', 'regr_r2',
+  'regr_avgx', 'regr_avgy', 'regr_sxx', 'regr_syy', 'regr_sxy',
+  // Distribution: position and frequency both shift under uneven duplication.
+  'percentile_cont', 'percentile_disc', 'mode',
 ]);
 
 interface FindingSink {

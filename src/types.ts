@@ -156,6 +156,13 @@ export interface Predicate {
   clause: 'where' | 'join' | 'having' | 'on' | 'qualify';
   /** True when this predicate is negated (NOT IN, NOT EXISTS, <>). */
   negated?: boolean;
+  /**
+   * True when an aggregate call appears anywhere in this predicate, decided
+   * from the parsed expression rather than from its text. An aggregate makes
+   * the condition post-aggregation: it cannot be evaluated during a scan, so
+   * nothing may push it below the grouping step.
+   */
+  hasAggregate?: boolean;
   /** Stable ids of subquery blocks syntactically contained in this predicate. */
   subqueryBlockIds?: string[];
   /**

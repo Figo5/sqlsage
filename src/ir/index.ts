@@ -1744,8 +1744,19 @@ function projectionOutputName(
   return undefined;
 }
 
+/**
+ * Does this HAVING conjunct sit above the aggregation?
+ *
+ * Decided from the parsed expression, recorded on the predicate when it is
+ * built. This was previously a regex over the predicate's text, gated on
+ * `kind === 'other'`, against a list of nine function names. Anything outside
+ * that list — `stddev`, `percentile_cont`, `mode`, a user-defined aggregate —
+ * was not recognised as an aggregate, so `HAVING stddev(o.total_cents) > 100`
+ * was pushed into the scan and described as a per-row filter. It cannot be one:
+ * the value does not exist until the group is complete.
+ */
 function containsAggregateText(pred: Predicate): boolean {
-  return pred.kind === 'other' && /\b(count|sum|avg|min|max|bool_and|bool_or|array_agg|string_agg)\s*\(/i.test(pred.sql);
+  return pred.hasAggregate === true;
 }
 
 function subqueriesOf(expr: Expr | null | undefined): SelectStatement[] {

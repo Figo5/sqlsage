@@ -217,6 +217,38 @@ test('a GIN index is credited for the containment operator it exists to serve', 
   assert.match(path.reason, /no ordered entries and no visibility-map support/);
 });
 
+test('a HAVING aggregate is never pushed into the scan, whatever the function', () => {
+  // The aggregate's argument is the grouping key, so the "every column is
+  // grouped" test passes and only the aggregate guard stands between this
+  // condition and the scan. A per-row filter cannot evaluate it: the value does
+  // not exist until the group is complete.
+  for (const call of [
+    'sum(o.customer_id)',
+    'stddev(o.customer_id)',
+    'variance(o.customer_id)',
+    'percentile_cont(0.5) WITHIN GROUP (ORDER BY o.customer_id)',
+    'mode() WITHIN GROUP (ORDER BY o.customer_id)',
+  ]) {
+    const ir = bindQuery(
+      `SELECT o.customer_id FROM shop.orders o GROUP BY o.customer_id HAVING ${call} > 100;`,
+      catalog,
+    );
+    assert.deepEqual(
+      ir.blocks[0]!.relations[0]!.localPredicates.map((predicate) => predicate.sql),
+      [],
+      `${call} leaked into scan-level pushdown`,
+    );
+  }
+
+  // An aggregate-free HAVING conjunct over a grouping key still pushes down —
+  // that is a real PostgreSQL behaviour and must not be lost to the fix.
+  const pushable = bindQuery(
+    `SELECT o.customer_id FROM shop.orders o GROUP BY o.customer_id HAVING o.customer_id > 100;`,
+    catalog,
+  );
+  assert.equal(pushable.blocks[0]!.relations[0]!.localPredicates.length, 1);
+});
+
 test('a containment predicate is classified apart from unrecognised shapes', () => {
   const ir = bindQuery(
     `SELECT e.event_id FROM shop.events e WHERE e.payload @> '{"a":1}';`,
