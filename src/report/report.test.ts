@@ -850,7 +850,9 @@ test('missing or invalid finding category is rejected instead of inferred from p
   const analysis = clone(healthyAnalysis) as Analysis & { findings: unknown[] };
   analysis.findings = [{
     ...finding({ title: 'This says wrong results and duplicate rows' }),
-    category: undefined,
+    // Deliberately invalid: the point of the test is that a missing
+    // category is rejected rather than inferred.
+    category: undefined as unknown as Finding['category'],
   }];
   analysis.rewrites = [];
   analysis.indexes = [];
@@ -897,7 +899,8 @@ test('finding actionability, not remediation wording, controls required, optiona
 
 test('missing finding actionability is rejected rather than inferred from prose or severity', () => {
   const analysis = focusedAnalysis(finding()) as Analysis & { findings: unknown[] };
-  analysis.findings = [{ ...finding(), actionability: undefined }];
+  // Deliberately invalid, as above.
+  analysis.findings = [{ ...finding(), actionability: undefined as unknown as Finding['actionability'] }];
   const model = buildModel(analysis as Analysis);
   assert.equal(model.verdict.kind, 'incomplete');
   assert.equal(model.issues.length, 0);

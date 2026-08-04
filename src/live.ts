@@ -55,7 +55,7 @@ export interface LiveClient {
 }
 
 export interface LiveDependencies {
-  createClient?: (databaseUrl: string) => LiveClient;
+  createClient?: (databaseUrl: string, statementTimeoutMs: number) => LiveClient;
   introspect?: (client: LiveClient, schema: string) => Promise<Catalog>;
 }
 
@@ -152,8 +152,30 @@ function validateInput(input: LiveEvidenceInput): ValidatedInput {
   };
 }
 
-function defaultClient(databaseUrl: string): LiveClient {
-  return new pg.Client({ connectionString: databaseUrl }) as unknown as LiveClient;
+/**
+ * Time allowed to establish the TCP connection and complete the startup
+ * handshake. `statement_timeout` cannot bound this: it is a server setting, and
+ * reaching the server is the thing that has not happened yet.
+ */
+const CONNECT_TIMEOUT_MS = 10_000;
+
+/**
+ * Headroom over the server-side statement timeout before the client stops
+ * waiting on its own. The server should be the one to cancel a slow statement,
+ * because it can do so cleanly; this is the backstop for when its answer never
+ * arrives — a dropped connection, a blackholed route, a host that accepts the
+ * socket and then goes silent. Without any client-side bound, `sqlsage
+ * --database-url` against an unreachable host hangs indefinitely with no
+ * output and nothing to cancel but the process.
+ */
+const CLIENT_TIMEOUT_HEADROOM_MS = 5_000;
+
+function defaultClient(databaseUrl: string, statementTimeoutMs: number): LiveClient {
+  return new pg.Client({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
+    query_timeout: statementTimeoutMs + CLIENT_TIMEOUT_HEADROOM_MS,
+  }) as unknown as LiveClient;
 }
 
 async function defaultIntrospect(client: LiveClient, schema: string): Promise<Catalog> {
@@ -190,7 +212,7 @@ export async function collectLiveEvidence(
   const validated = validateInput(input);
   const createClient = dependencies.createClient ?? defaultClient;
   const introspect = dependencies.introspect ?? defaultIntrospect;
-  const client = createClient(validated.databaseUrl);
+  const client = createClient(validated.databaseUrl, validated.statementTimeoutMs);
 
   let transactionStarted = false;
   let failed = false;

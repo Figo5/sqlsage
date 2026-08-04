@@ -1337,9 +1337,6 @@ class Binder {
       source: this.source,
       catalog: this.catalog,
       resolveRef: (node) => this.resolveRefIn(scope, node),
-      // Subqueries are bound by the caller (once, not once per assessment
-      // pass), so this is a no-op that keeps `buildPredicate` self-contained.
-      bindSubquery: () => '',
     };
   }
 

@@ -1,7 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CliUsageError, parseCliArgs } from './cli-args.ts';
+import { CliUsageError, parseCliArgs, type CliOptions } from './cli-args.ts';
+
+/**
+ * `parseCliArgs` returns a union over every command. These assertions inspect
+ * one command's own fields, so narrow once here rather than casting at each
+ * call site. Separate helpers because the commands' fields do not overlap.
+ */
+function parsedAnalyze(argv: string[], stdinIsTTY = false) {
+  return parseCliArgs(argv, stdinIsTTY) as Extract<CliOptions, { command: 'analyze' }>;
+}
+
+function parsedCompare(argv: string[], stdinIsTTY = false) {
+  return parseCliArgs(argv, stdinIsTTY) as Extract<CliOptions, { command: 'compare' }>;
+}
+
 
 test('help, version, and list commands are side-effect free', () => {
   assert.deepEqual(parseCliArgs([], true), { command: 'help' });
@@ -13,19 +27,19 @@ test('help, version, and list commands are side-effect free', () => {
 test('analyze accepts file, inline, explicit stdin, and piped stdin query sources', () => {
   assert.equal(parseCliArgs(['analyze', '--query', 'query.sql', '--catalog', 'catalog.json']).command, 'analyze');
   assert.deepEqual(
-    parseCliArgs(['analyze', '--query', 'query.sql', '--catalog', 'catalog.json']).query,
+    parsedAnalyze(['analyze', '--query', 'query.sql', '--catalog', 'catalog.json']).query,
     { kind: 'file', path: 'query.sql' },
   );
   assert.deepEqual(
-    parseCliArgs(['analyze', '--sql', 'SELECT 1', '--schema', 'schema.sql']).query,
+    parsedAnalyze(['analyze', '--sql', 'SELECT 1', '--schema', 'schema.sql']).query,
     { kind: 'inline', sql: 'SELECT 1' },
   );
   assert.deepEqual(
-    parseCliArgs(['analyze', '-', '--catalog', 'catalog.json']).query,
+    parsedAnalyze(['analyze', '-', '--catalog', 'catalog.json']).query,
     { kind: 'stdin' },
   );
   assert.deepEqual(
-    parseCliArgs(['analyze', '--catalog', 'catalog.json'], false).query,
+    parsedAnalyze(['analyze', '--catalog', 'catalog.json'], false).query,
     { kind: 'stdin' },
   );
 });
@@ -115,7 +129,7 @@ test('compare takes two captured plans and refuses to run anything', () => {
   assert.deepEqual(parseCliArgs(['compare', '--before', 'a.json', '--after', 'b.json']), {
     command: 'compare', beforePath: 'a.json', afterPath: 'b.json', format: undefined, color: undefined,
   });
-  assert.equal(parseCliArgs(['compare', '--before', 'a', '--after', 'b', '--format', 'json']).format, 'json');
+  assert.equal(parsedCompare(['compare', '--before', 'a', '--after', 'b', '--format', 'json']).format, 'json');
 
   assert.throws(() => parseCliArgs(['compare']), /needs both --before <plan> and --after <plan>/);
   assert.throws(() => parseCliArgs(['compare', '--before', 'a']), /needs both --before/);

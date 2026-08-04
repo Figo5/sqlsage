@@ -38,7 +38,7 @@ await withClient(async (client) => {
       }
       await writeFile(
         join(OUT, `${q.id}.json`),
-        JSON.stringify({ id: q.id, sql: q.sql, ...plan, fingerprint: fp }, null, 2) + '\n',
+        JSON.stringify({ ...plan, id: q.id, sql: q.sql, fingerprint: fp }, null, 2) + '\n',
       );
       await writeFile(
         join(OUT, `${q.id}.txt`),

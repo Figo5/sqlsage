@@ -158,7 +158,7 @@ function collect(e: Expr | null | undefined, out: Operand): void {
   }
   for (const key of Object.keys(e)) {
     if (key === '_location' || key === 'type' || key === 'function' || key === 'table') continue;
-    const v = (e as Record<string, unknown>)[key];
+    const v = (e as unknown as Record<string, unknown>)[key];
     if (Array.isArray(v)) for (const x of v) collect(x as Expr, out);
     else if (v && typeof v === 'object') collect(v as Expr, out);
   }
@@ -406,7 +406,7 @@ export function forEachCall(e: Expr | null | undefined, fn: (c: ExprCall) => voi
   if (t === 'call') fn(e as ExprCall);
   for (const key of Object.keys(e)) {
     if (key === '_location' || key === 'type' || key === 'function' || key === 'table') continue;
-    const v = (e as Record<string, unknown>)[key];
+    const v = (e as unknown as Record<string, unknown>)[key];
     if (Array.isArray(v)) for (const x of v) forEachCall(x as Expr, fn);
     else if (v && typeof v === 'object') forEachCall(v as Expr, fn);
   }
@@ -430,7 +430,7 @@ export function subqueriesIn(e: Expr | null | undefined, out: SelectStatement[] 
   }
   for (const key of Object.keys(e)) {
     if (key === '_location' || key === 'type' || key === 'table') continue;
-    const v = (e as Record<string, unknown>)[key];
+    const v = (e as unknown as Record<string, unknown>)[key];
     if (Array.isArray(v)) for (const x of v) subqueriesIn(x as Expr, out);
     else if (v && typeof v === 'object') subqueriesIn(v as Expr, out);
   }

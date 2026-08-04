@@ -36,6 +36,7 @@ jobs:
           echo "publishing version $pkg"
       - run: npm ci
       - run: npm test
+      - run: npm run typecheck
       - run: node eval/dump-ir.ts --check
       - run: node eval/run.ts
       - run: npm run validate

@@ -218,3 +218,25 @@ test('input validation is concise, typed, and happens before a client is created
   }
   assert.equal(clients, 0);
 });
+
+test('the client factory receives the statement timeout so it can bound itself', async () => {
+  // `SET LOCAL statement_timeout` is a server setting and cannot bound the
+  // client's own wait. Without a client-side bound, an unreachable host hangs
+  // the process with no output. The factory needs the timeout to derive one.
+  let seen: number | undefined;
+  await collectLiveEvidence(
+    { databaseUrl: 'postgres://u@h/db', sql: 'SELECT 1', statementTimeoutMs: 7_000 },
+    {
+      createClient(_databaseUrl, statementTimeoutMs) {
+        seen = statementTimeoutMs;
+        return {
+          async connect() {},
+          async query() { return { rows: [{ 'QUERY PLAN': [{ Plan: {} }] }] }; },
+          async end() {},
+        };
+      },
+      async introspect() { return CATALOG; },
+    },
+  );
+  assert.equal(seen, 7_000);
+});

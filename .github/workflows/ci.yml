@@ -26,6 +26,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # Node strips types to run .ts directly and never checks them; without
+      # this step nothing does.
+      - run: npm run typecheck
       - run: node eval/dump-ir.ts --check
       - run: node eval/run.ts
       # eval/run.ts checks that the analyzer composes; this checks that what it

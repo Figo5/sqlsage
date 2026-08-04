@@ -7,7 +7,7 @@
  * rests on a schema we only partially understood.
  */
 import { readFile } from 'node:fs/promises';
-import type { Catalog, ForeignKey, IndexDef, Table } from './types.ts';
+import type { Catalog, Column, ForeignKey, IndexDef, Table } from './types.ts';
 
 export class SchemaInputError extends Error {
   constructor(message: string) {

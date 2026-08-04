@@ -19,6 +19,7 @@ import type {
   QueryBlockIR,
   QueryIR,
   ResolvedColumnRef,
+  Table,
 } from '../types.ts';
 
 interface RecommendationSpec extends AdviceIndexDefinition {
@@ -652,7 +653,7 @@ function orderingIsUnique(catalog: Catalog, tableName: string, columns: string[]
   return covers(table.primaryKey) || table.indexes.some((index) => index.unique && !index.where && covers(index.columns));
 }
 
-function hasEquivalentIndex(indexes: ReturnType<typeof findTable>['indexes'], spec: RecommendationSpec): boolean {
+function hasEquivalentIndex(indexes: Table['indexes'], spec: RecommendationSpec): boolean {
   const normalize = (value: string) => value.toLowerCase().replace(/["\s]/g, '').replace(/asc$/i, '');
   return indexes.some((index) =>
     index.method === spec.method &&

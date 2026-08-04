@@ -46,7 +46,10 @@ if (check) {
 
 function runChecks(): number {
   let assertions = 0;
-  const ok = (condition: unknown, message: string): asserts condition => {
+  // An assertion function assigned to a const needs an explicit type annotation
+  // on the const itself; without one TypeScript refuses to apply the narrowing
+  // (TS2775) at all 41 call sites below.
+  const ok: (condition: unknown, message: string) => asserts condition = (condition, message) => {
     assertions++;
     assert.ok(condition, message);
   };

@@ -1,0 +1,28 @@
+{
+  "//": [
+    "Type-checking only. Nothing is emitted from here: `npm run build` bundles",
+    "with esbuild, and Node runs the .ts sources directly by stripping types.",
+    "This config exists so that stripping — which never checks anything — is not",
+    "the only thing standing between a type error and a release."
+  ],
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "eval/**/*.ts", "corpus/**/*.ts"]
+}

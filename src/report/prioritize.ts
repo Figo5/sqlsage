@@ -129,10 +129,12 @@ export interface ReportModel {
   dependencyProblems: DependencyProblem[];
   /** Every validation message, rejected and recovered alike, in discovery order. */
   validationProblems: string[];
-  /** Input the renderer had to drop: these suppress a categorical verdict. */
-  rejectedProblems: string[];
-  /** Input the renderer coerced or ignored: visible, but not a safety gate. */
-  recoveredProblems: string[];
+  // `rejectedProblems` and `recoveredProblems` were declared here as a planned
+  // split of the above, with the note that rejected input "suppresses a
+  // categorical verdict". Nothing ever populated them and nothing read them, so
+  // that safety gate did not exist — the declaration only made it look as
+  // though it did. Removed rather than left dangling; `validationProblems`
+  // carries every message today. Type-checking is what surfaced this.
   /** Things that limit how much the reader should trust this report. */
   limits: string[];
   counts: { findings: number; indexes: number; rewrites: number };

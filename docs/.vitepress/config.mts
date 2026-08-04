@@ -11,6 +11,7 @@ export default defineConfig({
   base: '/sqlsage/',
   cleanUrls: true,
   lastUpdated: true,
+  appearance: 'dark',
 
   // Contributor-facing docs that stay in the repo (and in this tree) but are
   // deliberately excluded from the public site: neither linked nor searchable.

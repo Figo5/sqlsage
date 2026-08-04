@@ -1,0 +1,67 @@
+/* SQLSage site theme — dark, terminal-green accent. */
+
+:root {
+  --vp-c-brand-1: #3fb950;
+  --vp-c-brand-2: #4fd16c;
+  --vp-c-brand-3: #2ea043;
+  --vp-c-brand-soft: rgba(63, 185, 80, 0.16);
+
+  --vp-c-bg: #07090a;
+  --vp-c-bg-alt: #0b0e10;
+  --vp-c-bg-soft: #0e1214;
+  --vp-c-bg-soft-up: #12171a;
+
+  --vp-c-divider: rgba(148, 163, 184, 0.14);
+  --vp-c-divider-light: rgba(148, 163, 184, 0.1);
+
+  --vp-c-text-1: #e6edf3;
+  --vp-c-text-2: #aeb8c4;
+  --vp-c-text-3: #76848f;
+
+  --sql-cyan: #38bdf8;
+  --sql-violet: #a78bfa;
+  --sql-amber: #fbbf24;
+  --sql-red: #f85149;
+
+  --vp-font-family-base: 'Inter', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --vp-font-family-mono: 'SF Mono', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, 'Liberation Mono', monospace;
+}
+
+/* Brand-colored link hovers and focus rings follow the green accent. */
+.dark {
+  --vp-c-brand-1: #3fb950;
+  --vp-c-brand-2: #4fd16c;
+  --vp-c-brand-3: #2ea043;
+}
+
+.VPNavBarTitle .title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Shared landing helpers ------------------------------------------------- */
+
+.sql-grid-bg {
+  background-image: linear-gradient(rgba(63, 185, 80, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(63, 185, 80, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.sql-noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
