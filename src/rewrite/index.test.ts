@@ -177,3 +177,23 @@ test('col = NULL rewrites to IS NULL and col <> NULL rewrites to IS NOT NULL, bo
   assert.deepEqual(bindQuery(neRewrite!.sql, catalog).bindingErrors, []);
   assert.match(neRewrite!.equivalenceNotes, /returns rows/i);
 });
+
+test('UNION with disjoint arms rewrites to UNION ALL as an exact, clean-binding change', () => {
+  const { rewrites } = advice(`SELECT customer_id FROM shop.orders WHERE status = 'complete'
+    UNION
+    SELECT customer_id FROM shop.orders WHERE status = 'cancelled'`);
+  const [rewrite] = rewrites;
+  assert.equal(rewrite?.id, 'rewrite-union-to-union-all');
+  assert.equal(rewrite?.equivalence, 'exact');
+  assert.match(rewrite!.sql, /UNION ALL/i);
+  assert.doesNotMatch(rewrite!.sql, /\bUNION\s+UNION ALL\b/i);
+  assert.deepEqual(bindQuery(rewrite!.sql, catalog).bindingErrors, []);
+  assert.match(rewrite!.equivalenceNotes, /disjoint/i);
+
+  // Overlapping arms produce the intent-only finding but no rewrite.
+  const overlapping = advice(`SELECT customer_id FROM shop.orders WHERE status = 'complete'
+    UNION
+    SELECT customer_id FROM shop.orders WHERE customer_id > 100`);
+  assert.ok(overlapping.findings.some((f) => f.id === 'union-all-eligible' && f.severity === 'info'));
+  assert.deepEqual(overlapping.rewrites, [], 'intent-only tier must not auto-rewrite');
+});

@@ -608,3 +608,42 @@ test('cross-type join keys are index-blocking; same-type keys stay clean', () =>
     /cross-type-join-key/,
   );
 });
+
+test('UNION with disjoint arms is eligible for UNION ALL; overlapping arms get intent-only; UNION ALL stays clean', () => {
+  // Provably disjoint: same column, different literal constants.
+  const disjoint = findings(`SELECT customer_id FROM shop.orders WHERE status = 'complete'
+     UNION
+     SELECT customer_id FROM shop.orders WHERE status = 'cancelled'`)
+    .find((f) => f.id === 'union-all-eligible')!;
+  assert.ok(disjoint);
+  assert.equal(disjoint.severity, 'low');
+  assert.equal(disjoint.category, 'performance');
+  assert.equal(disjoint.actionability, 'optional');
+  assert.match(disjoint.impact, /disjoint|cannot share a row|UNION ALL/i);
+
+  // Same constant on both arms -> NOT disjoint -> intent-only tier.
+  const sameValue = findings(`SELECT customer_id FROM shop.orders WHERE status = 'complete'
+     UNION
+     SELECT customer_id FROM shop.orders WHERE status = 'complete'`)
+    .find((f) => f.id === 'union-all-eligible')!;
+  assert.ok(sameValue);
+  assert.equal(sameValue.severity, 'info');
+  assert.equal(sameValue.category, 'intent');
+
+  // No filters to prove disjointness -> intent-only tier.
+  const noFilter = findings(`SELECT customer_id FROM shop.orders
+     UNION
+     SELECT customer_id FROM shop.events`)
+    .find((f) => f.id === 'union-all-eligible')!;
+  assert.ok(noFilter);
+  assert.equal(noFilter.severity, 'info');
+  assert.equal(noFilter.category, 'intent');
+
+  // UNION ALL is already the cheap form and must not fire.
+  assert.doesNotMatch(
+    ids(`SELECT customer_id FROM shop.orders WHERE status = 'complete'
+         UNION ALL
+         SELECT customer_id FROM shop.orders WHERE status = 'cancelled'`).join(','),
+    /union-all-eligible/,
+  );
+});

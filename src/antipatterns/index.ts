@@ -95,6 +95,7 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
   detectPredicateAccessProblems(ir, catalog, sink);
   detectCrossTypeJoinKeys(ir, catalog, sink);
   detectDistinctAggregates(ir, catalog, sink);
+  detectUnionAllEligible(ir, catalog, sink);
   detectRedundantGroupBy(ir, catalog, sink);
 
   return sink.findings.sort((a, b) =>
@@ -1042,6 +1043,130 @@ function detectRedundantGroupBy(ir: QueryIR, catalog: Catalog, sink: FindingSink
       confidence: 'high',
     });
   }
+}
+
+/**
+ * Detect `UNION` where `UNION ALL` would do.
+ *
+ * `UNION` deduplicates its arms, costing a sort or hash that `UNION ALL`
+ * skips. Two tiers:
+ *
+ * 1. Provably disjoint arms — each arm has a WHERE equality on the *same*
+ *    column against disjoint literal constants (e.g. one filters
+ *    `status='complete'`, the other `status='cancelled'`). No row can appear
+ *    in both arms, so `UNION ALL` is exactly equivalent. Fires
+ *    `union-all-eligible` at low/performance/optional and the M6 layer emits
+ *    an exact `UNION` -> `UNION ALL` rewrite.
+ * 2. Intent-only — when disjointness cannot be proven, fire at info/intent/none
+ *    noting that `UNION` deduplicates and `UNION ALL` is cheaper if the arms
+ *    are known disjoint by construction. No rewrite.
+ *
+ * Only the binary `union` set-op is examined; `union-all` is already the cheap
+ * form and `intersect`/`except` have their own semantics.
+ */
+function detectUnionAllEligible(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  for (const block of ir.blocks) {
+    if (block.setOp?.op !== 'union') continue;
+    const leftArmId = block.relations[0]?.source;
+    const rightArmId = block.setOp.withBlock ?? block.relations[1]?.source;
+    if (!leftArmId || !rightArmId) continue;
+    const leftArm = ir.blocks.find((candidate) => candidate.id === leftArmId);
+    const rightArm = ir.blocks.find((candidate) => candidate.id === rightArmId);
+    if (!leftArm || !rightArm) continue;
+
+    const leftPins = armEqualityPins(leftArm);
+    const rightPins = armEqualityPins(rightArm);
+    // Disjointness proof: the same column is pinned to different literal
+    // constants on both arms. A column pinned to the same constant on both
+    // arms is NOT disjoint (both could return rows for that value).
+    let disjointColumn: { table: string; column: string; leftValue: string; rightValue: string } | undefined;
+    for (const leftPin of leftPins) {
+      for (const rightPin of rightPins) {
+        if (leftPin.table !== rightPin.table || leftPin.column !== rightPin.column) continue;
+        if (leftPin.value === rightPin.value) continue; // same value -> not disjoint
+        disjointColumn = {
+          table: leftPin.table,
+          column: leftPin.column,
+          leftValue: leftPin.value,
+          rightValue: rightPin.value,
+        };
+        break;
+      }
+      if (disjointColumn) break;
+    }
+
+    const armsSql = `${armSignature(leftArm)} UNION ${armSignature(rightArm)}`;
+    if (disjointColumn) {
+      addFinding(sink, {
+        id: 'union-all-eligible',
+        title: 'UNION deduplicates arms that are provably disjoint',
+        severity: 'low',
+        category: 'performance',
+        actionability: 'optional',
+        evidence: {
+          sqlFragment: armsSql,
+          relation: disjointColumn.table,
+          column: disjointColumn.column,
+        },
+        impact:
+          `Both arms filter ${disjointColumn.table}.${disjointColumn.column} to disjoint literal values ` +
+          `(${disjointColumn.leftValue} vs ${disjointColumn.rightValue}), so no row can appear in both. ` +
+          `UNION still pays for a sort or hash to deduplicate arms that cannot share a row; UNION ALL skips that step and returns exactly the same result.`,
+        remediation: 'Replace UNION with UNION ALL. The arms are disjoint by construction, so the deduplication is dead work.',
+        caveat:
+          'The disjointness proof relies on the literal equality predicates visible in WHERE. If a future change removes or parameterizes one of those filters, UNION ALL could introduce duplicates — re-confirm disjointness then.',
+        confidence: 'high',
+      });
+      continue;
+    }
+
+    addFinding(sink, {
+      id: 'union-all-eligible',
+      title: 'UNION deduplicates; UNION ALL is cheaper when arms are disjoint',
+      severity: 'info',
+      category: 'intent',
+      actionability: 'none',
+      evidence: {
+        sqlFragment: armsSql,
+      },
+      impact:
+        'UNION removes duplicate rows across its arms, which costs a sort or hash. UNION ALL skips that step but preserves duplicates. If the arms are known to be disjoint by construction (e.g. mutually exclusive status filters, or disjoint key ranges), UNION ALL is exactly equivalent and cheaper.',
+      remediation:
+        'If the arms cannot share a row, switch to UNION ALL. If duplicates are possible and unwanted, keep UNION. The IR cannot prove disjointness here, so this is a prompt to confirm intent, not a prescribed change.',
+      caveat:
+        'UNION (not UNION ALL) is the right choice when the arms genuinely overlap and duplicates must be removed. Do not switch without confirming the arms are disjoint.',
+      confidence: 'medium',
+    });
+  }
+}
+
+/** Equality predicates in a block's WHERE that pin a column to a literal. */
+function armEqualityPins(block: QueryBlockIR): Array<{ table: string; column: string; value: string }> {
+  const pins: Array<{ table: string; column: string; value: string }> = [];
+  for (const predicate of block.predicates) {
+    if (predicate.kind !== 'equality' || predicate.clause !== 'where') continue;
+    const operands = predicate.equalityOperands;
+    if (!operands) continue;
+    const columnRef = predicate.columns.find((ref) => !ref.unresolved);
+    if (!columnRef) continue;
+    const value = operands.leftConstant ? operands.left : operands.right;
+    if (!value) continue;
+    pins.push({ table: columnRef.table ?? columnRef.alias ?? '', column: columnRef.column, value: stripQuotes(value) });
+  }
+  return pins;
+}
+
+function stripQuotes(literal: string): string {
+  const trimmed = literal.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
+  }
+  return trimmed;
+}
+
+function armSignature(block: QueryBlockIR): string {
+  const where = block.predicates.filter((p) => p.clause === 'where').map((p) => p.sql).join(' AND ');
+  return where ? `SELECT ... WHERE ${where}` : 'SELECT ...';
 }
 
 // ---------------------------------------------------------------------------

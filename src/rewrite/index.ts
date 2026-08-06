@@ -57,6 +57,10 @@ export function proposeRewrites(
     const rewrite = rewriteNullLiteralEquality(catalog, root);
     if (rewrite) rewrites.push(rewrite);
   }
+  if (hasFinding(findings, 'union-all-eligible')) {
+    const rewrite = rewriteUnionAllEligible(ir, root, findings);
+    if (rewrite) rewrites.push(rewrite);
+  }
   if (hasFinding(findings, 'aggregate-over-one-to-many-fanout')) {
     const rewrite = rewriteAggregateFanOut(catalog, root);
     if (rewrite) rewrites.push(rewrite);
@@ -289,6 +293,39 @@ function rewriteNullLiteralEquality(catalog: Catalog, block: QueryBlockIR): Rewr
     expectedSpeedup:
       'No speedup is claimed because the result population intentionally changes; the rewrite corrects a silent wrong-result bug rather than optimizing a correct one.',
     priority: 1,
+  };
+}
+
+function rewriteUnionAllEligible(ir: QueryIR, root: QueryBlockIR, findings: Finding[]): Rewrite | undefined {
+  // Only the provably-disjoint tier (low/performance) earns an exact rewrite.
+  // The intent-only tier (info/intent) deliberately gets no rewrite.
+  const finding = findings.find((candidate) => candidate.id === 'union-all-eligible' && candidate.severity === 'low');
+  if (!finding) return undefined;
+  if (root.setOp?.op !== 'union') return undefined;
+  // Guard against multi-union queries: replacing one UNION among several by a
+  // blanket keyword swap could change the wrong arm. Require a single union
+  // set-op in the IR so the replacement is unambiguous.
+  const unionOps = ir.blocks.filter((block) => block.setOp?.op === 'union').length;
+  if (unionOps !== 1) return undefined;
+  const sql = ir.normalizedSql;
+  if (!sql) return undefined;
+  // Replace the bare set-op UNION keyword, not an existing UNION ALL and not a
+  // column/alias that happens to contain "union" (matched as a whole word,
+  // case-insensitive, not followed by ALL).
+  const rewritten = sql.replace(/\bUNION(?!\s+ALL)\b/gi, 'UNION ALL');
+  if (rewritten === sql) return undefined;
+  return {
+    id: 'rewrite-union-to-union-all',
+    title: 'Replace UNION with UNION ALL when the arms are provably disjoint',
+    sql: rewritten,
+    rationale:
+      `The arms are disjoint by construction (${finding.evidence.relation ?? ''}${finding.evidence.column ? `.${finding.evidence.column}` : ''} is filtered to disjoint literal values on each arm), so UNION's deduplication step cannot remove any row. UNION ALL skips that sort/hash and returns exactly the same result.`,
+    equivalence: 'exact',
+    equivalenceNotes:
+      'Exact: the arms filter the same column to disjoint literal constants, so no row can appear in both. UNION and UNION ALL therefore return the same row set; only the deduplication work is removed.',
+    expectedSpeedup:
+      'UNION ALL removes a sort or hash aggregation that UNION pays even when no duplicates exist. No specific multiple is claimed because the cost depends on arm cardinality and available memory.',
+    priority: 3,
   };
 }
 
