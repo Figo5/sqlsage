@@ -12,6 +12,7 @@ import { findColumn, findTable } from '../catalog.ts';
 import { orderingIsTotal as blockOrderingIsTotal } from '../explain/index.ts';
 import { columnFixedByEquality, expressionFixedByEquality } from '../explain/index.ts';
 import { nestedBlockIds, outerJoinDemotions } from '../ir/index.ts';
+import { isInteger, isTexty, normalizeType } from '../ir/expressions.ts';
 import type {
   Catalog,
   Finding,
@@ -92,6 +93,7 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
   detectCorrelatedTopPerGroup(ir, catalog, sink);
   detectDistinctFanOut(ir, catalog, sink);
   detectPredicateAccessProblems(ir, catalog, sink);
+  detectCrossTypeJoinKeys(ir, catalog, sink);
   detectDistinctAggregates(ir, catalog, sink);
   detectRedundantGroupBy(ir, catalog, sink);
 
@@ -784,6 +786,82 @@ function detectDistinctFanOut(ir: QueryIR, catalog: Catalog, sink: FindingSink):
 // ---------------------------------------------------------------------------
 // Predicate access paths and aggregate resource observations
 // ---------------------------------------------------------------------------
+
+/**
+ * Detect cross-type join keys: an equality between columns whose normalized
+ * types differ, or whose join predicate carries an explicit cast on one side.
+ *
+ * A btree index is typed: it cannot serve an equality between, say, a text
+ * column and an integer column without a cast, and the cast may force a
+ * sequential scan or raise 'operator does not exist'. The same family with an
+ * explicit cast (e.g. `o.code::text = p.code`) is the milder index-blocking
+ * shape; a different-family match is the stronger one.
+ *
+ * Finding only — the assessor's sargability verdict is intentionally left
+ * untouched (see plan #5). The finding's prose notes that an ordinary btree
+ * cannot serve a cross-type equality without a cast, which supersedes the
+ * sargability verdict in the report. No rewrite: choosing the cast direction
+ * is a data/type decision the tool will not make.
+ */
+function detectCrossTypeJoinKeys(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  for (const block of ir.blocks) {
+    for (const join of block.joins) {
+      for (const key of join.equiKeys) {
+        const leftType = key.left.dataType;
+        const rightType = key.right.dataType;
+        if (!leftType || !rightType) continue;
+        const leftNorm = normalizeType(leftType);
+        const rightNorm = normalizeType(rightType);
+        if (leftNorm === rightNorm) continue;
+
+        const leftFamily = typeFamily(leftType);
+        const rightFamily = typeFamily(rightType);
+        const familyMismatch = leftFamily !== rightFamily;
+        // An explicit cast on the join key (e.g. o.code::text = p.code) is the
+        // same-family-but-cast shape; a family mismatch is the stronger case.
+        const joinSql = joinEvidence(join);
+        const castOnKey = /::\s*[a-z][a-z0-9_]*\b/i.test(joinSql);
+
+        addFinding(sink, {
+          id: 'cross-type-join-key',
+          title: 'Join key compares columns of different types',
+          severity: familyMismatch ? 'medium' : 'low',
+          category: 'performance',
+          actionability: 'optional',
+          evidence: {
+            sqlFragment: `${refSql(key.left)} = ${refSql(key.right)}`,
+            relation: relationSource(block, key.right.alias ?? key.right.table) ?? key.right.table,
+            column: key.right.column,
+          },
+          impact:
+            `The join equality compares ${refSql(key.left)} (${leftType}) with ${refSql(key.right)} (${rightType}). ` +
+            (familyMismatch
+              ? 'The types are in different families, so PostgreSQL must coerce one side before comparing; an ordinary btree index on either key cannot serve the equality without a matching cast, and the comparison may raise "operator does not exist" if no implicit cast is available. '
+              : 'The types differ in width or form within the same family; an explicit cast or a mismatched index type can still block index use. ') +
+            'This is an index-blocking condition before it is a correctness one.',
+          remediation:
+            'Make the join key types agree at the source (a generated column or a typed expression index matching the comparison form), or cast consistently and index the cast expression. Pick the cast direction that matches the dominant filter.',
+          caveat:
+            castOnKey
+              ? 'An explicit cast is already present on the join key; ensure an expression index matches the cast exactly, or remove the cast by aligning column types.'
+              : 'No explicit cast is visible in the join predicate; PostgreSQL may apply an implicit coercion whose direction is version- and search_path-dependent.',
+          confidence: 'high',
+        });
+      }
+    }
+  }
+}
+
+function typeFamily(t: string): string {
+  if (isInteger(t)) return 'integer';
+  if (isTexty(t)) return 'text';
+  if (normalizeType(t) === 'jsonb' || normalizeType(t) === 'json') return 'json';
+  if (normalizeType(t) === 'boolean') return 'boolean';
+  if (normalizeType(t) === 'uuid') return 'uuid';
+  if (/\btimestamp|date|time\b/.test(normalizeType(t))) return 'temporal';
+  if (/\bnumeric|decimal|float|double|real\b/.test(normalizeType(t))) return 'numeric';
+  return 'other';
+}
 
 function detectPredicateAccessProblems(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
   for (const block of ir.blocks) {

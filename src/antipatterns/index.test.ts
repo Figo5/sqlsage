@@ -585,3 +585,26 @@ test('count(col) over a nullable outer-joined column drops unmatched rows; count
     /count-skips-nullable-rows/,
   );
 });
+
+test('cross-type join keys are index-blocking; same-type keys stay clean', () => {
+  // Build a catalog where orders.customer_id is text but customers.customer_id
+  // is bigint, so the join equality is a cross-type comparison.
+  const crossType = structuredClone(catalog);
+  const orders = crossType.tables.find((table) => table.name === 'orders')!;
+  orders.columns.find((column) => column.name === 'customer_id')!.dataType = 'text';
+
+  const finding = findings(
+    `SELECT o.order_id FROM shop.orders o JOIN shop.customers c ON o.customer_id = c.customer_id`,
+    crossType,
+  ).find((f) => f.id === 'cross-type-join-key')!;
+  assert.ok(finding);
+  assert.equal(finding.severity, 'medium');
+  assert.equal(finding.category, 'performance');
+  assert.match(finding.impact, /different types|different families|index-blocking|btree/i);
+
+  // Same-type join (the stock catalog) must not fire.
+  assert.doesNotMatch(
+    ids(`SELECT o.order_id FROM shop.orders o JOIN shop.customers c ON o.customer_id = c.customer_id`).join(','),
+    /cross-type-join-key/,
+  );
+});
