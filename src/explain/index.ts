@@ -512,7 +512,7 @@ function timezoneSensitiveFragments(root: QueryBlockIR): string[] {
  * parameter. A `column = column` equality never counts — it leaves the group
  * with one row per distinct value, not one row total.
  */
-function expressionFixedByEquality(root: QueryBlockIR, group: string): boolean {
+export function expressionFixedByEquality(root: QueryBlockIR, group: string): boolean {
   if (/^\d+$/.test(group.trim())) {
     const ordinal = Number(group.trim());
     const projection = root.projections[ordinal - 1];
@@ -522,7 +522,7 @@ function expressionFixedByEquality(root: QueryBlockIR, group: string): boolean {
 }
 
 /** Column-based variant that also matches qualified-vs-unqualified spellings. */
-function columnFixedByEquality(root: QueryBlockIR, column: ResolvedColumnRef): boolean {
+export function columnFixedByEquality(root: QueryBlockIR, column: ResolvedColumnRef): boolean {
   if (!column.alias && !column.table) return false;
   return root.predicates.some((predicate) => {
     const operands = predicate.equalityOperands;

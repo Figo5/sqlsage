@@ -10,6 +10,7 @@
 
 import { findColumn, findTable } from '../catalog.ts';
 import { orderingIsTotal as blockOrderingIsTotal } from '../explain/index.ts';
+import { columnFixedByEquality, expressionFixedByEquality } from '../explain/index.ts';
 import { nestedBlockIds, outerJoinDemotions } from '../ir/index.ts';
 import type {
   Catalog,
@@ -91,6 +92,7 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
   detectDistinctFanOut(ir, catalog, sink);
   detectPredicateAccessProblems(ir, catalog, sink);
   detectDistinctAggregates(ir, catalog, sink);
+  detectRedundantGroupBy(ir, catalog, sink);
 
   return sink.findings.sort((a, b) =>
     SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
@@ -844,6 +846,56 @@ function detectDistinctAggregates(ir: QueryIR, catalog: Catalog, sink: FindingSi
         confidence: 'medium',
       });
     }
+  }
+}
+
+/**
+ * Detect `GROUP BY` whose every key is pinned to a single constant by an
+ * equality in WHERE. The grouping cannot change the result — there is at most
+ * one group — so the GROUP BY only adds a sort/hash-aggregate step.
+ *
+ * The fixed-by-equality proof is shared with the explain layer's grain prose
+ * (`expressionFixedByEquality` / `columnFixedByEquality`), so the detector and
+ * the explain text agree about when a group key is constant.
+ *
+ * No rewrite: collapsing the GROUP BY also requires dropping the aggregates or
+ * wrapping them differently, which is a semantic choice the tool will not make
+ * automatically. The finding points at the redundancy; the author decides.
+ */
+function detectRedundantGroupBy(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  for (const block of ir.blocks) {
+    const labelOf = (column: ResolvedColumnRef): string =>
+      `${column.alias ?? column.table ?? '?'}.${column.column}`;
+    const groups = block.groupByExpressions?.length
+      ? block.groupByExpressions
+      : block.groupBy.map((column) => ({ sql: labelOf(column), columns: [column] }));
+    if (!groups.length) continue;
+    const fixed = groups.every((group) =>
+      expressionFixedByEquality(block, group.sql)
+      || (group.columns.length === 1 && columnFixedByEquality(block, group.columns[0]!))
+    );
+    if (!fixed) continue;
+    const groupSql = block.groupByExpressions?.length
+      ? `GROUP BY ${block.groupByExpressions.map((g) => g.sql).join(', ')}`
+      : `GROUP BY ${block.groupBy.map(labelOf).join(', ')}`;
+    addFinding(sink, {
+      id: 'redundant-group-by',
+      title: 'GROUP BY a key already pinned to one value by WHERE',
+      severity: 'low',
+      category: 'performance',
+      actionability: 'optional',
+      evidence: {
+        sqlFragment: groupSql,
+        relation: largestRelation(block, catalog)?.name,
+      },
+      impact:
+        'Every group key is fixed to a single constant by equality predicates in WHERE, so the input can contain at most one group. The GROUP BY cannot change the result; it only forces a sort or hash-aggregate step the executor cannot skip.',
+      remediation:
+        'If the aggregates are still wanted as single-row totals, the GROUP BY can be dropped (the aggregates become scalar over the filtered input). If the pinned key is meant to be a real grouping dimension, move or relax the equality that pins it.',
+      caveat:
+        'Removing GROUP BY changes the shape only if combined with dropping aggregates that reference the grouping. Verify the query still returns one row of totals before relying on this.',
+      confidence: 'high',
+    });
   }
 }
 

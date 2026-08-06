@@ -38,7 +38,7 @@ test('all justified corpus families are assessed and the HAVING pushdown trap st
     ['q09', ['non-sargable-cast-on-column']],
     ['q10', []],
     ['q11', ['full-cardinality-correlated-aggregate']],
-    ['q12', ['unindexed-json-scalar-extraction', 'large-input-distinct-aggregate']],
+    ['q12', ['unindexed-json-scalar-extraction', 'large-input-distinct-aggregate', 'redundant-group-by']],
   ]);
 
   for (const query of CORPUS) {
@@ -506,4 +506,36 @@ test('LIMIT without a total ORDER BY is a correctness/intent finding, but a uniq
   assert.equal(nonUnique.category, 'intent');
   assert.equal(nonUnique.actionability, 'optional');
   assert.match(nonUnique.impact, /tie|non-reproducible|unspecified/i);
+});
+
+test('GROUP BY a key pinned to one value by WHERE is redundant; an unpinned key is not', () => {
+  // q12 corpus shape: GROUP BY 1 where projection 1 is pinned by WHERE.
+  assert.ok(corpusFindings('q12').some((f) => f.id === 'redundant-group-by'));
+
+  // Explicit form: GROUP BY the same expression pinned to a literal.
+  const pinned = findings(`SELECT e.payload->>'utm_source' AS source, count(*)
+     FROM shop.events e
+     WHERE e.payload->>'utm_source' = 'email'
+     GROUP BY e.payload->>'utm_source'`)
+    .find((f) => f.id === 'redundant-group-by')!;
+  assert.ok(pinned);
+  assert.equal(pinned.severity, 'low');
+  assert.equal(pinned.category, 'performance');
+  assert.match(pinned.impact, /at most one group|cannot change the result/i);
+
+  // A real grouping dimension (not pinned) must not fire.
+  assert.doesNotMatch(
+    ids(`SELECT e.event_type, count(*) FROM shop.events e
+         WHERE e.occurred_at >= TIMESTAMPTZ '2024-06-01'
+         GROUP BY e.event_type`).join(','),
+    /redundant-group-by/,
+  );
+
+  // column = column equality does not pin to a constant and must not fire.
+  assert.doesNotMatch(
+    ids(`SELECT c.customer_id, o.order_id FROM shop.customers c
+         JOIN shop.orders o ON o.customer_id = c.customer_id
+         GROUP BY c.customer_id, o.order_id`).join(','),
+    /redundant-group-by/,
+  );
 });
