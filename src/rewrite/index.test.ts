@@ -160,3 +160,20 @@ test('no finding evidence means no rewrite even for recognizable SQL text', () =
   const ir = bindQuery(query.sql, catalog);
   assert.deepEqual(proposeRewrites(ir, catalog, []), []);
 });
+
+test('col = NULL rewrites to IS NULL and col <> NULL rewrites to IS NOT NULL, both result-changing', () => {
+  const eqResult = advice(`SELECT customer_id FROM shop.customers WHERE email = NULL`);
+  const [eqRewrite] = eqResult.rewrites;
+  assert.equal(eqRewrite?.id, 'rewrite-null-literal-to-is-null');
+  assert.equal(eqRewrite?.equivalence, 'different-semantics');
+  assert.match(eqRewrite!.sql, /"customers"\."email" IS NULL/i);
+  assert.deepEqual(bindQuery(eqRewrite!.sql, catalog).bindingErrors, []);
+
+  const neResult = advice(`SELECT order_id FROM shop.orders WHERE coupon_code <> NULL`);
+  const [neRewrite] = neResult.rewrites;
+  assert.equal(neRewrite?.id, 'rewrite-null-literal-to-is-null');
+  assert.equal(neRewrite?.equivalence, 'different-semantics');
+  assert.match(neRewrite!.sql, /"orders"\."coupon_code" IS NOT NULL/i);
+  assert.deepEqual(bindQuery(neRewrite!.sql, catalog).bindingErrors, []);
+  assert.match(neRewrite!.equivalenceNotes, /returns rows/i);
+});

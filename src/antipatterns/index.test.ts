@@ -435,3 +435,44 @@ test('duplicate-sensitive aggregates are flagged beyond the additive ones', () =
     assert.equal(flagged(call), false, `${call} is idempotent and must not be flagged`);
   }
 });
+
+test('col = NULL / <> NULL / != NULL are critical correctness bugs; IS NULL and quoted NULL are safe', () => {
+  const fires = (sql: string) => findings(sql);
+  const eqNull = fires(`SELECT customer_id FROM shop.customers WHERE email = NULL`);
+  assert.ok(eqNull.some((finding) => finding.id === 'null-literal-equality'));
+  const [gate] = eqNull.filter((finding) => finding.id === 'null-literal-equality');
+  assert.deepEqual([gate?.severity, gate?.category, gate?.actionability, gate?.confidence],
+    ['critical', 'correctness', 'required', 'high']);
+
+  // <> NULL and != NULL both fire, as does NULL = col (operand order irrelevant).
+  assert.ok(fires(`SELECT customer_id FROM shop.customers WHERE email <> NULL`).some((f) => f.id === 'null-literal-equality'));
+  assert.ok(fires(`SELECT order_id FROM shop.orders WHERE coupon_code != NULL`).some((f) => f.id === 'null-literal-equality'));
+  assert.ok(fires(`SELECT customer_id FROM shop.customers WHERE NULL = email`).some((f) => f.id === 'null-literal-equality'));
+
+  // The <> / != form must not be reported as the "= returns no rows" shape: its
+  // impact prose describes dropping NULL rows, which is the distinct failure mode.
+  const neNull = fires(`SELECT order_id FROM shop.orders WHERE coupon_code <> NULL`)
+    .find((f) => f.id === 'null-literal-equality')!;
+  assert.match(neNull.impact, /drops/i);
+
+  // A quoted 'NULL' string literal is an ordinary value, not the keyword.
+  assert.doesNotMatch(
+    fires(`SELECT customer_id FROM shop.customers WHERE email = 'NULL'`).map((f) => f.id).join(','),
+    /null-literal-equality/,
+  );
+  // IS NULL / IS NOT NULL are the null-aware forms and must not fire.
+  assert.doesNotMatch(
+    fires(`SELECT customer_id FROM shop.customers WHERE email IS NULL`).map((f) => f.id).join(','),
+    /null-literal-equality/,
+  );
+  assert.doesNotMatch(
+    fires(`SELECT customer_id FROM shop.customers WHERE email IS NOT NULL`).map((f) => f.id).join(','),
+    /null-literal-equality/,
+  );
+  // A NULL inside an IN-list belongs to the existing not-in-null-literal finding
+  // (when negated) and must not double-fire as a null-literal-equality.
+  assert.doesNotMatch(
+    fires(`SELECT customer_id FROM shop.customers WHERE customer_id IN (1, 2, NULL)`).map((f) => f.id).join(','),
+    /null-literal-equality/,
+  );
+});

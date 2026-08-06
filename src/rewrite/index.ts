@@ -1,6 +1,7 @@
 /** M6 — conservative structural rewrites for supported PostgreSQL SELECT shapes. */
 
 import { qualifiedTable, quoteIdentifier } from '../advice/definitions.ts';
+import { bareNullEquality } from '../antipatterns/index.ts';
 import { findTable } from '../catalog.ts';
 import { nestedBlockIds } from '../ir/index.ts';
 import { recommendIndexes } from '../indexes/index.ts';
@@ -50,6 +51,10 @@ export function proposeRewrites(
   }
   if (hasFinding(findings, 'not-in-nullable-subquery')) {
     const rewrite = rewriteNullableNotIn(ir, catalog, root, indexes);
+    if (rewrite) rewrites.push(rewrite);
+  }
+  if (hasFinding(findings, 'null-literal-equality')) {
+    const rewrite = rewriteNullLiteralEquality(catalog, root);
     if (rewrite) rewrites.push(rewrite);
   }
   if (hasFinding(findings, 'aggregate-over-one-to-many-fanout')) {
@@ -246,6 +251,43 @@ function rewriteNullableNotIn(
     expectedSpeedup:
       'No comparable speedup is claimed because the result population intentionally changes. The optional partial index can support the corrected anti-join after semantics are fixed.',
     requiresIndexes: required ? [required.id] : undefined,
+    priority: 1,
+  };
+}
+
+/**
+ * Rewrite `col = NULL` → `col IS NULL` and `col <> NULL` / `col != NULL` →
+ * `col IS NOT NULL`. The original is never true (UNKNOWN), so this is an
+ * intentional result-changing repair, not an equivalence rewrite — the whole
+ * point is that the rewritten query returns rows the original suppressed.
+ */
+function rewriteNullLiteralEquality(catalog: Catalog, block: QueryBlockIR): Rewrite | undefined {
+  // The detector keys the finding's evidence.sqlFragment on the predicate sql,
+  // so find the predicate by the same shape it used: an equality predicate that
+  // is a direct column-vs-NULL comparison.
+  const predicate = block.predicates.find((candidate) =>
+    candidate.kind === 'equality' && bareNullEquality(candidate.sql) !== undefined,
+  );
+  if (!predicate) return undefined;
+  const ref = singleColumn(predicate);
+  if (!ref) return undefined;
+  const column = sqlRef(ref);
+  const isNegated = bareNullEquality(predicate.sql) !== '=';
+  const replacement = `${column} IS ${isNegated ? 'NOT ' : ''}NULL`;
+  const sql = renderSelect(block, catalog, { whereOverrides: new Map([[sqlKey(predicate.sql), replacement]]) });
+  if (!sql) return undefined;
+  return {
+    id: 'rewrite-null-literal-to-is-null',
+    title: isNegated ? 'Test for non-NULL rows with IS NOT NULL' : 'Test for NULL with IS NULL',
+    sql,
+    rationale:
+      `${predicate.sql} compares with the NULL keyword, which is never true. ` +
+      `IS ${isNegated ? 'NOT ' : ''}NULL is the null-aware form that actually selects the intended rows.`,
+    equivalence: 'different-semantics',
+    equivalenceNotes:
+      'The original predicate is never true (every comparison with NULL is UNKNOWN), so it returns no rows. The rewrite returns rows — that is the repair. Review the now-populated result as a correctness change.',
+    expectedSpeedup:
+      'No speedup is claimed because the result population intentionally changes; the rewrite corrects a silent wrong-result bug rather than optimizing a correct one.',
     priority: 1,
   };
 }

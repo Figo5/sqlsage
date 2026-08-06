@@ -80,6 +80,7 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
   const sink: FindingSink = { findings: [], evidenceKeys: new Set() };
 
   detectNullableNotIn(ir, catalog, sink);
+  detectNullLiteralEquality(ir, catalog, sink);
   detectAggregateFanOut(ir, catalog, sink);
   detectOuterJoinDemotions(ir, catalog, sink);
   detectDeepOffsets(ir, catalog, sink);
@@ -178,6 +179,57 @@ function detectNullableNotIn(ir: QueryIR, catalog: Catalog, sink: FindingSink): 
           confidence: nullFrac !== undefined && nullFrac > 0 ? 'high' : 'medium',
         });
       }
+    }
+  }
+}
+
+/**
+ * Detect `col = NULL` and `col <> NULL` / `col != NULL` — the classic
+ * three-valued-logic trap.
+ *
+ * A bare `= NULL` is never true (it evaluates to UNKNOWN), so the predicate
+ * removes every row; `<> NULL` / `!= NULL` is likewise never true and drops the
+ * column's NULL rows from what the author usually meant as "non-null rows."
+ * PostgreSQL accepts the syntax, so the bug is silent. `IS NULL` / `IS NOT
+ * NULL` are the null-aware forms.
+ *
+ * The engine already classifies these as plain `equality` (op `=`, with
+ * `negated` for `<>`/`!=`) because `classify()` never inspects whether the
+ * constant side is a NULL literal. This detector scans the predicate SQL with
+ * quote-awareness — the same approach `listContainsNullLiteral` takes — so a
+ * quoted `'NULL'` string and a NULL inside an `IN`-list are not mistaken for
+ * the keyword.
+ */
+function detectNullLiteralEquality(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  for (const block of ir.blocks) {
+    for (const predicate of block.predicates) {
+      if (predicate.kind !== 'equality') continue;
+      const op = bareNullEquality(predicate.sql);
+      if (!op) continue;
+      const ref = singleResolvedColumn(predicate);
+      const negated = op !== '=';
+      addFinding(sink, {
+        id: 'null-literal-equality',
+        title: negated
+          ? 'Comparison against NULL is never true and drops NULL rows'
+          : 'Equality against NULL is never true and returns no rows',
+        severity: 'critical',
+        category: 'correctness',
+        actionability: 'required',
+        evidence: { sqlFragment: predicate.sql, relation: ref?.table, column: ref?.column },
+        impact:
+          `${predicate.sql} compares a column with the NULL keyword using ${op}. Every comparison with NULL ` +
+          'evaluates to UNKNOWN, which is not true, so this predicate ' +
+          (negated
+            ? 'drops every row — including the NULL rows an inequality was usually meant to keep separate from the non-NULL ones.'
+            : 'can never be satisfied and eliminates the entire result set.'),
+        remediation: negated
+          ? "Rewrite as `IS NOT NULL` to select non-NULL rows, or `IS DISTINCT FROM <value>` for a true null-aware inequality. `<> NULL` cannot express either intent."
+          : 'Rewrite as `IS NULL` to test for NULL. `= NULL` can never match.',
+        caveat:
+          'A quoted \'NULL\' string literal is an ordinary value and is not reported; only a bare NULL keyword is. IS [NOT] DISTINCT FROM is the fully null-aware equality/inequality.',
+        confidence: 'high',
+      });
     }
   }
 }
@@ -324,6 +376,16 @@ function detectDeepOffsets(ir: QueryIR, catalog: Catalog, sink: FindingSink): vo
  * is not mistaken for the keyword.
  */
 function listContainsNullLiteral(sql: string): boolean {
+  const bare = stripQuotedRuns(sql);
+  return /\bNULL\b/i.test(bare.slice(bare.indexOf('(') + 1));
+}
+
+/**
+ * Replace every single- and double-quoted run with a space, so a quoted `'NULL'`
+ * string or an identifier containing the letters NULL cannot be mistaken for
+ * the bare NULL keyword. Doubled quotes inside a literal (`'a''b'`) are honoured.
+ */
+export function stripQuotedRuns(sql: string): string {
   let bare = '';
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i]!;
@@ -342,7 +404,31 @@ function listContainsNullLiteral(sql: string): boolean {
     }
     bare += ch;
   }
-  return /\bNULL\b/i.test(bare.slice(bare.indexOf('(') + 1));
+  return bare;
+}
+
+/**
+ * Returns the comparison operator (`=`, `<>`, or `!=`) when a predicate is a
+ * direct column-versus-NULL comparison with a *bare* NULL keyword on the
+ * constant side, otherwise undefined.
+ *
+ * `col = NULL`, `NULL = col`, `col <> NULL`, and `col != NULL` all match. A
+ * quoted `'NULL'` does not, nor does a NULL inside parentheses — `IN (NULL)`
+ * and `= ANY(NULL)` belong to other findings or are out of scope here. The
+ * NULL must be the whole constant side (`col = NULL`), not part of an
+ * expression (`col = NULL + 1` is not a null comparison).
+ */
+export function bareNullEquality(sql: string): '=' | '<>' | '!=' | undefined {
+  const bare = stripQuotedRuns(sql);
+  // Reject any parenthesised NULL: `IN (NULL)`, `= ANY(NULL)`, etc.
+  if (/\(\s*NULL\s*\)/i.test(bare)) return undefined;
+  // `col <op> NULL` at end of the predicate, or `NULL <op> col` at start.
+  const trailing = /(?:=|<>|!=)\s+NULL\s*$/i.exec(bare);
+  const leading = /^\s*NULL\s+(?:=|<>|!=)/i.exec(bare);
+  const match = trailing ?? leading;
+  if (!match) return undefined;
+  const opMatch = /=|<>|!=/.exec(match[0])!;
+  return opMatch[0] as '=' | '<>' | '!=';
 }
 
 /**
