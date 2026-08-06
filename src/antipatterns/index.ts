@@ -9,6 +9,7 @@
  */
 
 import { findColumn, findTable } from '../catalog.ts';
+import { orderingIsTotal as blockOrderingIsTotal } from '../explain/index.ts';
 import { nestedBlockIds, outerJoinDemotions } from '../ir/index.ts';
 import type {
   Catalog,
@@ -84,6 +85,7 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
   detectAggregateFanOut(ir, catalog, sink);
   detectOuterJoinDemotions(ir, catalog, sink);
   detectDeepOffsets(ir, catalog, sink);
+  detectLimitWithoutOrder(ir, catalog, sink);
   detectRepeatedCorrelatedAggregates(ir, catalog, sink);
   detectCorrelatedTopPerGroup(ir, catalog, sink);
   detectDistinctFanOut(ir, catalog, sink);
@@ -364,6 +366,77 @@ function detectDeepOffsets(ir: QueryIR, catalog: Catalog, sink: FindingSink): vo
         ordering.impact,
       remediation: ordering.remediation,
       caveat: 'OFFSET remains appropriate for shallow pages or true random page access; seek pagination changes the API and its concurrent-update behavior.',
+      confidence: 'high',
+    });
+  }
+}
+
+/**
+ * Detect `LIMIT` without a total `ORDER BY`.
+ *
+ * A `LIMIT` over an unspecified or non-unique ordering returns an unspecified
+ * row set: re-runs, plan changes, or vacuum/analyze can return different rows
+ * even on identical data. The explain layer already emits a caveat for the same
+ * condition; this finding promotes it to an actionable correctness/intent
+ * defect so it is not buried in prose. The total-order test is shared with the
+ * explain layer (`orderingIsTotal`) so the two never disagree.
+ *
+ * No rewrite is emitted: a deterministic ordering is a semantic choice the tool
+ * will not invent, mirroring the deliberate refusal to rewrite outer-join
+ * demotions.
+ */
+function detectLimitWithoutOrder(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  for (const block of ir.blocks) {
+    if (block.limit === undefined) continue;
+    const hasOrderBy = block.orderBy.length > 0;
+    if (hasOrderBy && blockOrderingIsTotal(block, catalog)) continue;
+
+    const order = block.orderBy.map((item) => `${item.sql} ${item.direction.toUpperCase()}`).join(', ');
+    const evidence = [
+      order ? `ORDER BY ${order}` : undefined,
+      `LIMIT ${block.limit}`,
+      block.offset !== undefined ? `OFFSET ${block.offset}` : undefined,
+    ].filter(Boolean).join(' ');
+
+    if (!hasOrderBy) {
+      addFinding(sink, {
+        id: 'limit-without-total-order',
+        title: 'LIMIT with no ORDER BY returns a nondeterministic row set',
+        severity: 'high',
+        category: 'correctness',
+        actionability: 'required',
+        evidence: {
+          sqlFragment: evidence,
+          relation: largestRelation(block, catalog)?.name,
+        },
+        impact:
+          'LIMIT without ORDER BY returns an unspecified subset of rows. The executor is free to return any rows it reaches first, so re-runs, plan changes, or VACUUM/ANALYZE can return a different set even on identical data. The result is not reproducible.',
+        remediation:
+          'Add a deterministic ORDER BY whose key is unique over the input (a primary key is a safe tiebreaker). Without one the LIMIT is a random sample, not a query.',
+        caveat:
+          'If an unspecified sample is genuinely intended, prefer TABLESAMPLE or an explicit random() for clarity rather than relying on the absence of ORDER BY.',
+        confidence: 'high',
+      });
+      continue;
+    }
+
+    addFinding(sink, {
+      id: 'limit-without-total-order',
+      title: 'LIMIT with a non-unique ORDER BY can return different rows on ties',
+      severity: 'medium',
+      category: 'intent',
+      actionability: 'optional',
+      evidence: {
+        sqlFragment: evidence,
+        relation: largestRelation(block, catalog)?.name,
+        column: block.orderBy[block.orderBy.length - 1]?.column?.column,
+      },
+      impact:
+        'The ORDER BY key is not unique over the output, so rows tied at the LIMIT boundary are returned in an unspecified order. A different plan, a VACUUM/ANALYZE, or concurrent writes can swap which tied rows survive the cut, making the result non-reproducible at the margin.',
+      remediation:
+        'Extend ORDER BY with a unique tiebreaker (a primary key or other NOT NULL unique column) so the ordering is total. The current ordering is fine for "top N roughly" but not for reproducible pagination or stable sampling.',
+      caveat:
+        'A non-total ORDER BY is sometimes acceptable (e.g. dashboards showing "recent" rows). Promote to a total order only when the row set must be stable.',
       confidence: 'high',
     });
   }

@@ -28,11 +28,11 @@ function corpusFindings(shortId: string): Finding[] {
 test('all justified corpus families are assessed and the HAVING pushdown trap stays clean', () => {
   const expected = new Map<string, string[]>([
     ['q01', ['non-sargable-function-on-column']],
-    ['q02', ['leading-wildcard-like', 'mixed-access-paths-under-or']],
+    ['q02', ['limit-without-total-order', 'leading-wildcard-like', 'mixed-access-paths-under-or']],
     ['q03', ['repeated-correlated-aggregate-scans']],
     ['q04', ['deep-offset-pagination']],
     ['q05', ['not-in-nullable-subquery']],
-    ['q06', ['aggregate-over-one-to-many-fanout']],
+    ['q06', ['aggregate-over-one-to-many-fanout', 'limit-without-total-order']],
     ['q07', ['left-join-null-rejected-in-where']],
     ['q08', ['distinct-collapses-existence-fanout']],
     ['q09', ['non-sargable-cast-on-column']],
@@ -194,8 +194,13 @@ test('wrapped-column rules separate function, cast, JSON extraction, and matchin
 
 test('leading wildcard and mixed OR findings do not contaminate anchored or fully sargable searches', () => {
   const q02 = corpusFindings('q02');
-  assert.deepEqual(q02.map((finding) => finding.id), ['leading-wildcard-like', 'mixed-access-paths-under-or']);
-  assert.equal(q02[0]!.evidence.sqlFragment, `email LIKE '%@example.com'`);
+  // q02 also carries `limit-without-total-order` (its ORDER BY signup_date is
+  // non-unique under LIMIT 50); assert the access-path findings by id rather
+  // than position so the LIMIT finding does not disturb this regression guard.
+  const leadingWildcard = q02.find((finding) => finding.id === 'leading-wildcard-like')!;
+  assert.ok(leadingWildcard);
+  assert.equal(leadingWildcard.evidence.sqlFragment, `email LIKE '%@example.com'`);
+  assert.ok(q02.some((finding) => finding.id === 'mixed-access-paths-under-or'));
 
   assert.deepEqual(
     ids(`SELECT customer_id FROM shop.customers WHERE full_name LIKE 'Customer 1%'`),
@@ -475,4 +480,30 @@ test('col = NULL / <> NULL / != NULL are critical correctness bugs; IS NULL and 
     fires(`SELECT customer_id FROM shop.customers WHERE customer_id IN (1, 2, NULL)`).map((f) => f.id).join(','),
     /null-literal-equality/,
   );
+});
+
+test('LIMIT without a total ORDER BY is a correctness/intent finding, but a unique key stays clean', () => {
+  // No ORDER BY at all: high-severity correctness, required action.
+  const noOrder = findings(`SELECT customer_id, email FROM shop.customers LIMIT 10`)
+    .find((f) => f.id === 'limit-without-total-order')!;
+  assert.ok(noOrder);
+  assert.equal(noOrder.severity, 'high');
+  assert.equal(noOrder.category, 'correctness');
+  assert.equal(noOrder.actionability, 'required');
+  assert.match(noOrder.impact, /nondeterministic|unspecified|not reproducible/i);
+
+  // ORDER BY a primary key is a total order: the finding must NOT fire.
+  assert.doesNotMatch(
+    ids(`SELECT order_id FROM shop.orders ORDER BY order_id LIMIT 10`).join(','),
+    /limit-without-total-order/,
+  );
+
+  // ORDER BY a non-unique column: medium-severity intent, ties at the boundary.
+  const nonUnique = findings(`SELECT order_id FROM shop.orders ORDER BY status LIMIT 10`)
+    .find((f) => f.id === 'limit-without-total-order')!;
+  assert.ok(nonUnique);
+  assert.equal(nonUnique.severity, 'medium');
+  assert.equal(nonUnique.category, 'intent');
+  assert.equal(nonUnique.actionability, 'optional');
+  assert.match(nonUnique.impact, /tie|non-reproducible|unspecified/i);
 });

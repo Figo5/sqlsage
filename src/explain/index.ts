@@ -573,7 +573,15 @@ function projectedIdentity(root: QueryBlockIR, catalog: Catalog): string | undef
   return undefined;
 }
 
-function orderingIsTotal(root: QueryBlockIR, catalog: Catalog): boolean {
+/**
+ * Whether the block's `ORDER BY` (combined with proven unique keys and the
+ * grouping structure) identifies a total order over the output rows.
+ *
+ * Shared by the explain caveat ('Tied rows are not fully ordered' / 'No output
+ * order is promised') and the M4 `limit-without-total-order` finding, so the
+ * two layers never disagree about what counts as a total order.
+ */
+export function orderingIsTotal(root: QueryBlockIR, catalog: Catalog): boolean {
   if (root.groupByExpressions?.length && root.groupByExpressions.every((expression) => expressionFixedByEquality(root, expression.sql))) return true;
   const ordered = root.orderBy.map((item) => item.column).filter(isDefined);
   for (const relation of root.relations) {
