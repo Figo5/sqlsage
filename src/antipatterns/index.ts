@@ -84,6 +84,7 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
   detectNullableNotIn(ir, catalog, sink);
   detectNullLiteralEquality(ir, catalog, sink);
   detectAggregateFanOut(ir, catalog, sink);
+  detectCountNullableColumn(ir, catalog, sink);
   detectOuterJoinDemotions(ir, catalog, sink);
   detectDeepOffsets(ir, catalog, sink);
   detectLimitWithoutOrder(ir, catalog, sink);
@@ -296,6 +297,72 @@ function detectAggregateFanOut(ir: QueryIR, catalog: Catalog, sink: FindingSink)
         'Do not flag a lookup join merely because some relation is repeated: the aggregate must read an alias named in multipliedRelations. MIN/MAX and item-grain measures are not changed by duplication in the same way, and SUM(DISTINCT ...) is not a general repair.',
       confidence: 'high',
     });
+  }
+}
+
+/**
+ * Detect `count(col)` over a nullable column whose row is preserved by an
+ * outer join. `count(col)` skips NULLs, so when the counted column's relation
+ * is the null-extended side of a LEFT/FULL join, the preserved rows that failed
+ * to match contribute NULL and are silently dropped from the count — the author
+ * usually meant `count(*)` (all preserved rows) or a filter-and-inner-join.
+ *
+ * `count(*)` is unaffected (it counts rows, not values), `count(distinct col)`
+ * has its own documented NULL semantics, and a NOT NULL column cannot be
+ * null-extended to NULL, so none of those fire.
+ */
+function detectCountNullableColumn(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  for (const block of ir.blocks) {
+    for (const aggregate of block.aggregates) {
+      if (aggregate.func.toLowerCase() !== 'count') continue;
+      if (aggregate.distinct) continue;
+      const projection = block.projections.find((candidate) => sameSql(candidate.sql, aggregate.sql));
+      // count(*) has no column refs and counts rows; only a single-column count
+      // is the nullable-skipping shape.
+      if (!projection || projection.columns.length !== 1) continue;
+      const ref = projection.columns[0]!;
+      if (ref.unresolved) continue;
+      const table = relationSource(block, ref.alias ?? ref.table) ?? ref.table;
+      if (!table) continue;
+      const catalogColumn = findColumn(catalog, table, ref.column);
+      // Prefer the catalog's nullability; fall back to the resolved ref's.
+      const nullable = catalogColumn ? catalogColumn.nullable : ref.nullable;
+      if (!nullable) continue;
+
+      // Is the counted column's relation the null-extended side of an outer join?
+      const alias = ref.alias ?? ref.table;
+      const outerJoin = block.joins.find((join) => {
+        if (join.type === 'left') return join.rightRelation === alias;
+        if (join.type === 'right') return join.leftRelation === alias;
+        if (join.type === 'full') return join.leftRelation === alias || join.rightRelation === alias;
+        return false;
+      });
+      if (!outerJoin) continue;
+
+      const joinedRelation = relationSource(block, outerJoin.rightRelation) ?? outerJoin.rightRelation;
+      addFinding(sink, {
+        id: 'count-skips-nullable-rows',
+        title: 'count(col) over a nullable outer-joined column drops unmatched rows',
+        severity: 'high',
+        category: 'correctness',
+        actionability: 'optional',
+        evidence: {
+          sqlFragment: aggregate.sql,
+          relation: table,
+          column: ref.column,
+        },
+        impact:
+          `count(${ref.column}) skips NULL values, and ${alias}.${ref.column} is nullable on the null-extended side of a ${outerJoin.type.toUpperCase()} join. ` +
+          `Preserved rows that found no match contribute a NULL for ${ref.column} and are silently excluded from the count. ` +
+          `count(*) would count every preserved row; the current count counts only matched ones.`,
+        remediation:
+          `If every preserved row should be counted, use count(*) (or count(a non-null key from the preserved side). ` +
+          `If only matched rows should be counted, the outer join is probably not what was intended — an inner join would express that without a silent NULL filter.`,
+        caveat:
+          `count(col) is sometimes the deliberate "count of non-null values" metric. The finding fires only when the column is catalog-nullable AND its relation is outer-join-preserved, which is the shape where the skip is usually unintentional.`,
+        confidence: 'high',
+      });
+    }
   }
 }
 

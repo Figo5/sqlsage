@@ -539,3 +539,49 @@ test('GROUP BY a key pinned to one value by WHERE is redundant; an unpinned key 
     /redundant-group-by/,
   );
 });
+
+test('count(col) over a nullable outer-joined column drops unmatched rows; count(*) and NOT NULL keys stay clean', () => {
+  const finding = findings(`SELECT c.customer_id, count(o.coupon_code) AS used_coupons
+     FROM shop.customers c
+     LEFT JOIN shop.orders o ON o.customer_id = c.customer_id
+     GROUP BY c.customer_id`)
+    .find((f) => f.id === 'count-skips-nullable-rows')!;
+  assert.ok(finding);
+  assert.equal(finding.severity, 'high');
+  assert.equal(finding.category, 'correctness');
+  assert.match(finding.impact, /NULL|skips/i);
+  assert.match(finding.remediation, /count\(\*\)/i);
+
+  // count(*) counts preserved rows regardless of NULLs and must not fire.
+  assert.doesNotMatch(
+    ids(`SELECT c.customer_id, count(*) FROM shop.customers c
+         LEFT JOIN shop.orders o ON o.customer_id = c.customer_id
+         GROUP BY c.customer_id`).join(','),
+    /count-skips-nullable-rows/,
+  );
+
+  // count(non_null_pk) cannot be null-extended to NULL and must not fire.
+  assert.doesNotMatch(
+    ids(`SELECT c.customer_id, count(o.order_id) FROM shop.customers c
+         LEFT JOIN shop.orders o ON o.customer_id = c.customer_id
+         GROUP BY c.customer_id`).join(','),
+    /count-skips-nullable-rows/,
+  );
+
+  // count(distinct col) has its own NULL semantics and must not fire.
+  assert.doesNotMatch(
+    ids(`SELECT c.customer_id, count(DISTINCT o.coupon_code) FROM shop.customers c
+         LEFT JOIN shop.orders o ON o.customer_id = c.customer_id
+         GROUP BY c.customer_id`).join(','),
+    /count-skips-nullable-rows/,
+  );
+
+  // An inner join does not preserve unmatched rows, so count(nullable col) is
+  // simply the count of matched non-null values — not the silent-drop shape.
+  assert.doesNotMatch(
+    ids(`SELECT c.customer_id, count(o.coupon_code) FROM shop.customers c
+         JOIN shop.orders o ON o.customer_id = c.customer_id
+         GROUP BY c.customer_id`).join(','),
+    /count-skips-nullable-rows/,
+  );
+});
