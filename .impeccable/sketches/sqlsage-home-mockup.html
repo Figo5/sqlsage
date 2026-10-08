@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sqlsage — correctness-first PostgreSQL query explainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0D0C0A;
+    --void-raised:#141310;
+    --paper:#EDE6D6;
+    --muted:#9A927C;
+    --green:#3FB950;
+    --green-dim:#1F5C2C;
+    --warn:#D08A3E;
+    --border:#282419;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--void); color:var(--paper); font-family:'Source Serif 4', serif;}
+  ::selection{background:var(--green-dim); color:var(--paper);}
+  a{color:inherit; text-decoration:none;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 28px; border-bottom:1px solid var(--border);
+  }
+  .topbar-left{display:flex; align-items:center; gap:28px;}
+  .brand{font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:15px; letter-spacing:0.02em;}
+  .brand span{color:var(--green);}
+  .topbar-right{display:flex; align-items:center; gap:24px; font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted);}
+  .kbd-hint{border:1px solid var(--border); border-radius:4px; padding:3px 8px; color:var(--muted);}
+
+  .hero{max-width:900px; margin:0 auto; padding:64px 28px 20px; text-align:center;}
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted);
+    letter-spacing:0.08em; text-transform:lowercase; margin-bottom:22px;
+  }
+  .eyebrow .dot{color:var(--green);}
+  h1{
+    font-family:'IBM Plex Mono', monospace; font-weight:500; font-size:36px;
+    line-height:1.35; color:var(--paper); max-width:680px; margin:0 auto 26px;
+    letter-spacing:-0.01em;
+  }
+  h1 .green{color:var(--green);}
+
+  .badges{display:flex; justify-content:center; gap:8px; margin-bottom:32px; flex-wrap:wrap;}
+  .badge{
+    font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--muted);
+    border:1px solid var(--border); border-radius:4px; padding:4px 10px;
+  }
+  .badge .green{color:var(--green);}
+
+  .cta-row{display:flex; justify-content:center; gap:12px; margin-bottom:56px; flex-wrap:wrap;}
+  .btn{
+    font-family:'IBM Plex Mono', monospace; font-size:13.5px; padding:10px 18px;
+    border-radius:5px; border:1px solid var(--border); color:var(--muted);
+  }
+  .btn.primary{background:var(--green-dim); border-color:var(--green); color:var(--paper);}
+  .btn.ghost:hover{border-color:var(--green); color:var(--paper);}
+
+  .term-wrap{max-width:640px; margin:0 auto 80px; padding:0 28px;}
+  .term{
+    background:var(--void-raised); border:1px solid var(--border); border-radius:7px;
+    overflow:hidden; text-align:left;
+  }
+  .term-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px; border-bottom:1px solid var(--border);
+  }
+  .term-head-left{display:flex; align-items:center; gap:8px;}
+  .dot-row{display:flex; gap:5px;}
+  .tdot{width:8px; height:8px; border-radius:50%; background:var(--border);}
+  .term-title{font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--muted);}
+  .term-tag{font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:2px 7px;}
+  .term-body{padding:20px 22px; font-family:'IBM Plex Mono', monospace; font-size:13px; line-height:1.85; text-align:left;}
+  .term-body .line{color:var(--paper); opacity:0; animation:reveal 0.4s ease forwards;}
+  .l1{animation-delay:0.1s;} .l2{animation-delay:0.5s;} .l3{animation-delay:0.85s;}
+  .l4{animation-delay:1.15s;} .l5{animation-delay:1.35s;} .l6{animation-delay:1.75s;}
+  .l7{animation-delay:2.0s;} .l8{animation-delay:2.2s;} .l9{animation-delay:2.6s;}
+  .l10{animation-delay:2.85s;} .l11{animation-delay:3.1s;}
+  @keyframes reveal{to{opacity:1;}}
+  @media (prefers-reduced-motion: reduce){
+    .term-body .line{opacity:1; animation:none;}
+  }
+  .prompt{color:var(--green);}
+  .muted-line{color:var(--muted);}
+  .label{color:var(--muted);}
+  .warn-tag{color:var(--warn);}
+  .ev{color:var(--green-dim); font-size:11.5px;}
+  .indent{padding-left:18px;}
+  .cursor{display:inline-block; width:7px; height:14px; background:var(--green); vertical-align:-2px; margin-left:2px; animation:blink 1s step-start infinite;}
+  @keyframes blink{50%{opacity:0;}}
+
+  .features{max-width:980px; margin:0 auto; padding:0 28px 90px;}
+  .features h2{
+    font-family:'IBM Plex Mono', monospace; font-weight:500; font-size:14px;
+    color:var(--muted); text-align:center; margin-bottom:36px; letter-spacing:0.02em;
+  }
+  .feature-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:7px; overflow:hidden;}
+  .feature{background:var(--void); padding:26px 24px;}
+  .feature .tag{font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--green); margin-bottom:12px; letter-spacing:0.04em;}
+  .feature .ftitle{font-family:'IBM Plex Mono', monospace; font-size:14.5px; color:var(--paper); margin-bottom:8px;}
+  .feature .fdesc{font-size:14px; color:var(--muted); line-height:1.6;}
+
+  footer{border-top:1px solid var(--border); padding:24px 28px; text-align:center;}
+  footer p{font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--muted); margin:0;}
+
+  @media (max-width:700px){
+    .feature-grid{grid-template-columns:1fr;}
+    h1{font-size:27px;}
+    .topbar-right{gap:12px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="brand">sql<span>sage</span></div>
+  </div>
+  <div class="topbar-right">
+    <span class="kbd-hint">⌘K to search</span>
+    <a href="#">docs</a>
+    <a href="#">tutorials</a>
+    <a href="#">github ↗</a>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="eyebrow"><span class="dot">●</span> correctness-first · offline-first · postgresql</div>
+  <h1>Explain your PostgreSQL query, and <span class="green">know it's right</span> before you make it fast.</h1>
+
+  <div class="badges">
+    <span class="badge">npm <span class="green">0.2.1</span></span>
+    <span class="badge">ci <span class="green">passing</span></span>
+    <span class="badge">mit license</span>
+    <span class="badge">postgresql</span>
+  </div>
+
+  <div class="cta-row">
+    <a href="#" class="btn primary">Get started</a>
+    <a href="#" class="btn ghost">Walk through a bug</a>
+    <a href="#" class="btn ghost">GitHub ↗</a>
+  </div>
+</div>
+
+<div class="term-wrap">
+  <div class="term">
+    <div class="term-head">
+      <div class="term-head-left">
+        <div class="dot-row"><div class="tdot"></div><div class="tdot"></div><div class="tdot"></div></div>
+        <span class="term-title">sqlsage demo</span>
+      </div>
+      <span class="term-tag">offline · no db</span>
+    </div>
+    <div class="term-body">
+      <div class="line l1"><span class="prompt">$</span> npm install --global sqlsage && sqlsage demo</div>
+      <div class="line l2 muted-line indent">▸ parsing query .......... done</div>
+      <div class="line l3 muted-line indent">▸ binding to catalog ...... done</div>
+      <div class="line l4" style="margin-top:8px;"><span class="label">grain</span>&nbsp;&nbsp;&nbsp;&nbsp;1 row per (customer_id, order_id)</div>
+      <div class="line l5"><span class="label">shape</span>&nbsp;&nbsp;&nbsp;&nbsp;Seq Scan → Hash Join → Sort</div>
+      <div class="line l6" style="margin-top:10px;"><span class="warn-tag">⚑ wrong-result risk</span> <span class="ev">evidence: plan-observed</span></div>
+      <div class="line l7 indent muted-line">NOT IN excludes all rows when customer_id</div>
+      <div class="line l8 indent muted-line">contains any NULL — silently returns 0 rows</div>
+      <div class="line l9 indent" style="margin-top:4px;">→ rewrite to <span class="prompt">NOT EXISTS</span> <span class="ev">evidence: predicted</span></div>
+      <div class="line l10" style="margin-top:10px;"><span class="label">report</span>&nbsp;&nbsp;written → sqlsage-report.json</div>
+      <div class="line l11" style="margin-top:10px;"><span class="prompt">$</span> <span class="cursor"></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="features">
+  <h2>-- what it does</h2>
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="tag">correctness</div>
+      <div class="ftitle">Correctness before speed</div>
+      <div class="fdesc">A query that silently returns the wrong rows matters more than one that's merely slow — wrong-result risks are flagged first.</div>
+    </div>
+    <div class="feature">
+      <div class="tag">explain</div>
+      <div class="ftitle">Plain-English explanations</div>
+      <div class="fdesc">Result grain, execution shape, and risk — described in words, with the exact SQL and column behind each finding.</div>
+    </div>
+    <div class="feature">
+      <div class="tag">evidence</div>
+      <div class="ftitle">Honest evidence labels</div>
+      <div class="fdesc">Every claim is predicted, plan-observed, measured, or unverified. Nothing over-promises.</div>
+    </div>
+    <div class="feature">
+      <div class="tag">offline</div>
+      <div class="ftitle">Works completely offline</div>
+      <div class="fdesc">Analyze with just schema or catalog metadata. A database connection is optional, and never required.</div>
+    </div>
+    <div class="feature">
+      <div class="tag">actionable</div>
+      <div class="ftitle">Explicit change sets</div>
+      <div class="fdesc">Conservative index recommendations and rewrites — never executed silently, always reviewable.</div>
+    </div>
+    <div class="feature">
+      <div class="tag">json</div>
+      <div class="ftitle">Machine-readable output</div>
+      <div class="fdesc">An evidence bundle you can replay and compare across captures, in text, markdown, or JSON.</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <p>MIT licensed · Analyzes PostgreSQL SELECT statements with an honest evidence model. © 2026 Gio Fiore</p>
+</footer>
+
+</body>
+</html>

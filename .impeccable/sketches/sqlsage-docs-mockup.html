@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sqlsage — docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0D0C0A;
+    --void-raised:#141310;
+    --paper:#EDE6D6;
+    --muted:#9A927C;
+    --amber:#3FB950;
+    --amber-dim:#1F5C2C;
+    --border:#282419;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--void); color:var(--paper); font-family:'Source Serif 4', serif;}
+  ::selection{background:var(--amber-dim); color:var(--paper);}
+  a{color:inherit; text-decoration:none;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 28px; border-bottom:1px solid var(--border);
+  }
+  .topbar-left{display:flex; align-items:center; gap:28px;}
+  .brand{font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:15px; letter-spacing:0.02em;}
+  .brand span{color:var(--amber);}
+  .status{display:flex; align-items:center; gap:7px; font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted);}
+  .dot{width:6px; height:6px; border-radius:50%; background:var(--amber); flex-shrink:0;}
+  .topbar-right{display:flex; align-items:center; gap:24px; font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted);}
+  .kbd-hint{border:1px solid var(--border); border-radius:4px; padding:3px 8px; color:var(--muted);}
+
+  .layout{display:flex; max-width:1180px; margin:0 auto;}
+
+  .sidebar{
+    width:230px; flex-shrink:0; padding:32px 20px;
+    border-right:1px solid var(--border);
+    font-family:'IBM Plex Mono', monospace; font-size:13px; line-height:2.1;
+  }
+  .sidebar .path{color:var(--muted); font-size:12px; margin-bottom:10px;}
+  .sidebar .tree-line{color:var(--muted); white-space:pre;}
+  .sidebar a{color:var(--muted);}
+  .sidebar a:hover{color:var(--paper);}
+  .sidebar .active{color:var(--amber);}
+  .sidebar .indent{color:var(--border);}
+
+  .content{flex:1; padding:32px 48px 80px; max-width:760px;}
+  .breadcrumb{
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted);
+    margin-bottom:28px;
+  }
+  .breadcrumb .amber{color:var(--amber);}
+
+  h1{
+    font-family:'IBM Plex Mono', monospace; font-weight:500; font-size:26px;
+    color:var(--amber); margin-bottom:22px; letter-spacing:0.01em;
+  }
+  h1 .dash{color:var(--amber-dim);}
+
+  p{font-size:16.5px; line-height:1.75; color:var(--paper); margin-bottom:18px; max-width:62ch;}
+  p.lead{font-size:18px; color:var(--paper); line-height:1.7; margin-bottom:26px;}
+  .muted-text{color:var(--muted);}
+
+  code.inline{
+    font-family:'IBM Plex Mono', monospace; font-size:14.5px; background:var(--void-raised);
+    border:1px solid var(--border); border-radius:4px; padding:1px 6px; color:var(--amber);
+  }
+
+  .term{
+    background:var(--void-raised); border:1px solid var(--border); border-radius:6px;
+    margin:28px 0; overflow:hidden;
+  }
+  .term-head{
+    padding:9px 16px; border-bottom:1px solid var(--border);
+    font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--muted);
+    letter-spacing:0.04em; text-transform:lowercase;
+  }
+  .term-body{padding:18px 20px; font-family:'IBM Plex Mono', monospace; font-size:14px; line-height:1.9;}
+  .prompt{color:var(--amber);}
+  .kw{color:var(--amber);}
+  .term-body .line{color:var(--paper); white-space:pre-wrap;}
+  .cursor{display:inline-block; width:7px; height:14px; background:var(--amber); vertical-align:-2px; margin-left:2px;}
+
+  table.result{
+    width:100%; border-collapse:collapse; margin:12px 0 8px;
+    font-family:'IBM Plex Mono', monospace; font-size:13px;
+  }
+  table.result th{
+    text-align:left; color:var(--muted); font-weight:400; padding:6px 14px 8px 0;
+    border-bottom:1px solid var(--border);
+  }
+  table.result td{
+    padding:6px 14px 6px 0; color:var(--paper); border-bottom:1px solid var(--void);
+  }
+  .row-count{color:var(--muted); font-size:12.5px; margin-top:6px;}
+
+  .next-steps{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); margin-top:44px; border:1px solid var(--border); border-radius:6px; overflow:hidden;}
+  .next-card{background:var(--void); padding:20px; transition:background 0.15s;}
+  .next-card:hover{background:var(--void-raised);}
+  .next-card .label{font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--amber); letter-spacing:0.06em; margin-bottom:8px; text-transform:lowercase;}
+  .next-card .title{font-family:'IBM Plex Mono', monospace; font-size:14.5px; color:var(--paper); margin-bottom:6px;}
+  .next-card .desc{font-size:13.5px; color:var(--muted); font-family:'Source Serif 4', serif; line-height:1.5;}
+
+  @media (max-width:800px){
+    .sidebar{display:none;}
+    .content{padding:24px 20px 60px;}
+    .topbar{padding:12px 16px;}
+    .topbar-right{gap:14px;}
+    .next-steps{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="brand">sql<span>sage</span></div>
+    <div class="status"><span class="dot"></span>connected — v0.4.2</div>
+  </div>
+  <div class="topbar-right">
+    <span class="kbd-hint">⌘K to search</span>
+    <a href="#">docs</a>
+    <a href="#">api</a>
+    <a href="#">github</a>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="path">docs/</div>
+    <div><a href="#">introduction</a></div>
+    <div><a href="#" class="active">getting-started</a></div>
+    <div><a href="#">connecting</a></div>
+    <div class="tree-line">queries/</div>
+    <div><span class="indent">├── </span><a href="#">select</a></div>
+    <div><span class="indent">├── </span><a href="#">joins</a></div>
+    <div><span class="indent">└── </span><a href="#">window-functions</a></div>
+    <div><a href="#">reference</a></div>
+  </div>
+
+  <div class="content">
+    <div class="breadcrumb"><span class="amber">sqlsage=#</span> \d docs.getting-started</div>
+
+    <h1><span class="dash">--</span> Getting started</h1>
+
+    <p class="lead">sqlsage connects to your existing database and turns raw queries into something you can actually read back later — versioned, annotated, and searchable.</p>
+
+    <p>Most tools ask you to leave the terminal to understand your data. sqlsage doesn't. Every session you run stays exactly where you left it: a query, its result, and whatever note you attached to it, saved in order.</p>
+
+    <p>Install the CLI, point it at a connection string, and you're reading results in under a minute. No dashboard to configure first.</p>
+
+    <div class="term">
+      <div class="term-head">session — events</div>
+      <div class="term-body">
+        <div class="line"><span class="prompt">sqlsage=#</span> <span class="kw">SELECT</span> id, name, ts <span class="kw">FROM</span> events <span class="kw">ORDER BY</span> ts <span class="kw">DESC</span> <span class="kw">LIMIT</span> 3;</div>
+        <table class="result">
+          <tr><th>id</th><th>name</th><th>ts</th></tr>
+          <tr><td>8841</td><td>session_start</td><td>14:22:07</td></tr>
+          <tr><td>8840</td><td>query_run</td><td>14:21:52</td></tr>
+          <tr><td>8839</td><td>connect</td><td>14:21:40</td></tr>
+        </table>
+        <div class="row-count">(3 rows)</div>
+        <div class="line" style="margin-top:10px;"><span class="prompt">sqlsage=#</span> <span class="cursor"></span></div>
+      </div>
+    </div>
+
+    <p>Results aren't thrown away when the session ends. Reference an earlier query with <code class="inline">\r 8840</code> and it reopens exactly as it ran, result set included.</p>
+
+    <p class="muted-text">Next, connect sqlsage to a live database and run your first real query.</p>
+
+    <div class="next-steps">
+      <div class="next-card">
+        <div class="label">next</div>
+        <div class="title">connecting a database</div>
+        <div class="desc">Point sqlsage at Postgres, MySQL, or SQLite with a single connection string.</div>
+      </div>
+      <div class="next-card">
+        <div class="label">reference</div>
+        <div class="title">session commands</div>
+        <div class="desc">The full list of slash-commands available inside a sqlsage session.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

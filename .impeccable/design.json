@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-04T00:00:00Z",
+  "title": "Design System: SQLSage (Query Console)",
+  "extensions": {
+    "colorMeta": {
+      "green": {
+        "role": "primary",
+        "displayName": "Terminal Green",
+        "canonical": "#3fb950",
+        "tonalRamp": ["oklch(0.35 0.10 146)", "oklch(0.44 0.16 146)", "oklch(0.52 0.17 146)", "oklch(0.61 0.18 146)", "oklch(0.69 0.18 146)", "oklch(0.78 0.17 146)", "oklch(0.86 0.16 146)", "oklch(0.95 0.06 146)"]
+      },
+      "green-dim": {
+        "role": "primary",
+        "displayName": "Green Dim",
+        "canonical": "#1f5c2c",
+        "tonalRamp": ["oklch(0.14 0.06 148)", "oklch(0.22 0.09 148)", "oklch(0.31 0.09 148)", "oklch(0.39 0.10 148)", "oklch(0.48 0.10 148)", "oklch(0.56 0.09 148)", "oklch(0.65 0.09 148)", "oklch(0.73 0.03 148)"]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Alert Amber",
+        "canonical": "#d08a3e",
+        "tonalRamp": ["oklch(0.35 0.07 65)", "oklch(0.44 0.11 65)", "oklch(0.52 0.12 65)", "oklch(0.61 0.12 65)", "oklch(0.69 0.12 65)", "oklch(0.78 0.12 65)", "oklch(0.86 0.11 65)", "oklch(0.95 0.04 65)"]
+      },
+      "void": {
+        "role": "neutral",
+        "displayName": "Void",
+        "canonical": "#0d0c0a",
+        "tonalRamp": ["oklch(0.14 0.01 85)", "oklch(0.19 0.01 85)", "oklch(0.23 0.01 85)", "oklch(0.28 0.01 85)", "oklch(0.33 0.01 85)", "oklch(0.37 0.01 85)", "oklch(0.42 0.01 85)", "oklch(0.46 0.01 85)"]
+      },
+      "void-raised": {
+        "role": "neutral",
+        "displayName": "Void Raised",
+        "canonical": "#141310",
+        "tonalRamp": ["oklch(0.14 0.01 92)", "oklch(0.19 0.01 92)", "oklch(0.24 0.01 92)", "oklch(0.29 0.01 92)", "oklch(0.34 0.01 92)", "oklch(0.40 0.01 92)", "oklch(0.45 0.01 92)", "oklch(0.50 0.01 92)"]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ede6d6",
+        "tonalRamp": ["oklch(0.59 0.01 87)", "oklch(0.64 0.02 87)", "oklch(0.69 0.02 87)", "oklch(0.74 0.02 87)", "oklch(0.79 0.02 87)", "oklch(0.84 0.02 87)", "oklch(0.89 0.02 87)", "oklch(0.94 0.01 87)"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#9a927c",
+        "tonalRamp": ["oklch(0.32 0.02 90)", "oklch(0.41 0.03 90)", "oklch(0.50 0.03 90)", "oklch(0.59 0.03 90)", "oklch(0.68 0.03 90)", "oklch(0.77 0.03 90)", "oklch(0.86 0.03 90)", "oklch(0.94 0.01 90)"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "canonical": "#282419",
+        "tonalRamp": ["oklch(0.14 0.01 90)", "oklch(0.20 0.02 90)", "oklch(0.26 0.02 90)", "oklch(0.32 0.02 90)", "oklch(0.39 0.02 90)", "oklch(0.45 0.02 90)", "oklch(0.51 0.02 90)", "oklch(0.57 0.01 90)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page titles — the h1, in mono 500, Green with a Green Dim '-- ' dash." },
+      "headline": { "displayName": "Headline", "purpose": "Section headings — h2, mono 500, Paper with a dim dash." },
+      "title": { "displayName": "Title", "purpose": "Card and feature titles, mono 500, Paper." },
+      "body": { "displayName": "Body", "purpose": "Prose in Source Serif 4, Paper, capped at ~62ch." },
+      "label": { "displayName": "Label", "purpose": "Uppercase-style lowercase eyebrows and feature tags, mono." },
+      "mono": { "displayName": "Mono", "purpose": "Terminal output, code, tables, badges, tree, breadcrumb — the product voice." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "ease-state", "value": "ease", "duration": "0.15s", "purpose": "Border and ink changes on hover — the only state transition." },
+      { "name": "blink", "value": "step-start infinite", "duration": "1s", "purpose": "The terminal block cursor." },
+      { "name": "reveal", "value": "ease forwards", "duration": "0.4s", "purpose": "Home terminal demo lines reveal, staggered; reduced-motion renders instantly." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "700px" },
+      { "name": "tablet", "value": "960px" },
+      { "name": "wide", "value": "1440px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action on a surface: Green Dim fill, Green border, Paper text.",
+      "html": "<a class=\"q-btn primary\">Get started</a>",
+      "css": ".q-btn{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13.5px;padding:10px 18px;border-radius:4px;border:1px solid #282419;color:#9a927c;text-decoration:none;transition:border-color .15s ease,color .15s ease}.q-btn.primary{background:#1f5c2c;border-color:#3fb950;color:#ede6d6}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary destination beside a primary: hairline Border, Muted text; border goes Green on hover.",
+      "html": "<a class=\"q-btn ghost\">Walk through a bug</a>",
+      "css": ".q-btn{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13.5px;padding:10px 18px;border-radius:4px;border:1px solid #282419;color:#9a927c;text-decoration:none;transition:border-color .15s ease,color .15s ease}.q-btn.ghost:hover{border-color:#3fb950;color:#ede6d6}"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Mono metadata chip with a hairline rule; the value token is Green.",
+      "html": "<span class=\"q-badge\">npm <span class=\"green\">0.2.1</span></span>",
+      "css": ".q-badge{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11.5px;color:#9a927c;border:1px solid #282419;border-radius:4px;padding:4px 10px}.q-badge .green{color:#3fb950}"
+    },
+    {
+      "name": "Terminal Window",
+      "kind": "custom",
+      "refersTo": "terminal-window",
+      "description": "The signature frame: Void Raised surface, head bar with title + tag, mono body, Green prompts/keywords, Amber risks, blinking cursor.",
+      "html": "<div class=\"q-term\"><div class=\"q-term-head\"><span class=\"q-term-title\">sqlsage demo</span><span class=\"q-term-tag\">offline · no db</span></div><div class=\"q-term-body\"><div class=\"q-line\"><span class=\"q-prompt\">$</span> sqlsage demo</div><div class=\"q-line\"><span class=\"q-kw\">SELECT</span> c.customer_id</div><div class=\"q-line q-warn\">⚑ wrong-result risk</div><div class=\"q-line\"><span class=\"q-prompt\">$</span> <span class=\"q-cursor\"></span></div></div></div>",
+      "css": ".q-term{background:#141310;border:1px solid #282419;border-radius:6px;overflow:hidden;text-align:left}.q-term-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #282419}.q-term-title{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11.5px;color:#9a927c}.q-term-tag{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:#9a927c;border:1px solid #282419;border-radius:4px;padding:2px 7px}.q-term-body{padding:20px 22px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px;line-height:1.85;text-align:left}.q-line{color:#ede6d6}.q-prompt{color:#3fb950}.q-kw{color:#3fb950}.q-warn{color:#d08a3e}.q-cursor{display:inline-block;width:7px;height:14px;background:#3fb950;vertical-align:-2px;animation:q-blink 1s step-start infinite}@keyframes q-blink{50%{opacity:0}}"
+    },
+    {
+      "name": "Feature Card",
+      "kind": "card",
+      "refersTo": "feature-card",
+      "description": "One idea per cell in a hairline lattice: mono Green tag, mono Paper title, serif Muted description. Flat on hover.",
+      "html": "<article class=\"q-feature\"><div class=\"q-tag\">correctness</div><div class=\"q-ftitle\">Correctness before speed</div><p class=\"q-fdesc\">Wrong-result risks are flagged first.</p></article>",
+      "css": ".q-feature{background:#0d0c0a;padding:26px 24px}.q-tag{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:#3fb950;margin-bottom:12px;letter-spacing:.04em}.q-ftitle{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:14.5px;color:#ede6d6;margin-bottom:8px}.q-fdesc{font-size:14px;color:#9a927c;line-height:1.6;margin:0}"
+    },
+    {
+      "name": "Breadcrumb",
+      "kind": "custom",
+      "refersTo": "breadcrumb",
+      "description": "The session's current object on every doc page: Green prompt, Muted command, right-aligned status.",
+      "html": "<div class=\"q-crumb\"><span class=\"q-prompt\">sqlsage=#</span><span>\\d docs.getting-started</span></div>",
+      "css": ".q-crumb{display:flex;align-items:center;gap:.5rem;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;color:#9a927c;margin-bottom:28px}.q-crumb .q-prompt{color:#3fb950}"
+    },
+    {
+      "name": "Tree Sidebar",
+      "kind": "custom",
+      "refersTo": "tree-sidebar",
+      "description": "Directory tree replacing the default sidebar: Muted docs/ path, lowercase links, Border tree glyphs, Green active.",
+      "html": "<nav class=\"qtree\"><div class=\"qtree-path\">docs/</div><a href=\"#\">getting-started</a><div class=\"qtree-dir\">tutorials/</div><span class=\"qtree-glyph\">├── </span><a href=\"#\">wrong-results</a></nav>",
+      "css": ".qtree{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px;line-height:2.1}.qtree-path{color:#9a927c;font-size:12px;margin-bottom:10px}.qtree-dir{color:#9a927c}.qtree-glyph{color:#282419}.qtree a{color:#9a927c;text-decoration:none;text-transform:lowercase}.qtree a:hover{color:#ede6d6}.qtree a.active{color:#3fb950}"
+    },
+    {
+      "name": "Code Block",
+      "kind": "custom",
+      "refersTo": "code-block",
+      "description": "Terminal chrome for code: Void Raised fill, hairline rule, 34px header bar with a lowercase language label.",
+      "html": "<div class=\"q-code\"><span class=\"q-code-lang\">bash</span><code>$ sqlsage demo</code></div>",
+      "css": ".q-code{position:relative;margin:28px 0;border:1px solid #282419;border-radius:6px;background:#141310;overflow:hidden;padding:34px 20px 18px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13.5px;line-height:1.85;color:#ede6d6;text-align:left}.q-code-lang{position:absolute;top:9px;left:16px;font-size:11px;font-weight:400;color:#9a927c;letter-spacing:.04em;text-transform:lowercase}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Query Console",
+    "overview": "SQLSage's documentation is a terminal you can read. Every page sits inside a warm near-black console — serif prose for the reading voice, IBM Plex Mono for all the chrome — with a single green accent that means \"correctness, active, go.\" The reader is never handed a brochure; they are handed a session. The topbar carries the two-tone sql·sage wordmark, the sidebar is a directory tree (docs/, ├── and └── glyphs), and every page opens with a psql-style breadcrumb: sqlsage=# \\d docs.getting-started.\n\nThe density is quiet and ordered: one idea per card, tight mono headings, generous serif lines capped at ~62ch. Surfaces are flat, separated by tone and hairline rules rather than shadows or glow. Nothing flashes; the only motion is the terminal cursor's blink and the home demo's slow line-by-line reveal. Green is reserved for the accent — prompts, keywords, active nav, primary action — and amber appears only where the tool is flagging a wrong-result risk or safety warning.",
+    "keyCharacteristics": [
+      "A console session as a reading experience, not a marketing page",
+      "Warm near-black void (#0d0c0a) with paper ink (#ede6d6)",
+      "Serif prose (Source Serif 4) inside mono chrome (IBM Plex Mono)",
+      "One green accent for correctness and action; amber for warnings only",
+      "Flat surfaces and hairline rules — no glow, no gradient, no light theme"
+    ],
+    "rules": [
+      { "name": "The Single-Accent Rule", "body": "Green is the only accent color, and amber is the only alert color; the two never trade jobs and nothing decorative borrows either. A page that needs a second accent is a page the design system is already failing.", "section": "colors" },
+      { "name": "The Console Voice Rule", "body": "Anything machine-shaped — commands, badges, headings, tree, breadcrumb, terminal output, code, tables — is set in the mono stack; prose is the only serif. Headings are mono because they are comments a session would print.", "section": "typography" },
+      { "name": "The Flat-Surface Rule", "body": "No surface carries a static or hover shadow; no element uses gradient or glow. Elevation is a lighter surface tone, and state is a border or ink change — nothing floats.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep every surface flat and separate it with tone and hairline rules — never shadow, glow, or gradient.",
+      "Do set all machine-shaped type — headings, topbar, sidebar, breadcrumb, badges, code, tables, terminal, footer — in IBM Plex Mono, and all prose in Source Serif 4.",
+      "Do reserve Green for the single accent (correctness, active, primary action) and Amber exclusively for warnings and wrong-result alerts.",
+      "Do cap prose at ~62ch and keep the reading column narrow.",
+      "Do keep the world dark-only; there is no light theme.",
+      "Do honor prefers-reduced-motion — the terminal demo must render its full output instantly when reduced motion is requested."
+    ],
+    "donts": [
+      "Don't add a second accent; Green is the only accent and Amber is alert-only.",
+      "Don't use gradient text, glow, or drop shadows anywhere.",
+      "Don't mix Inter back in — the world is IBM Plex Mono + Source Serif 4.",
+      "Don't widen prose beyond ~62ch.",
+      "Don't let amber appear on anything that is not a warning or wrong-result alert."
+    ]
+  }
+}
