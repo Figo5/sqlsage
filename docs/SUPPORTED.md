@@ -89,8 +89,9 @@ Two options, in order of preference:
    and does not go through the DDL parser. `sqlsage doctor --catalog catalog.json`
    validates it.
 2. **Reduce the DDL to what the analysis needs** — tables, column types, nullability, keys,
-   and indexes. `CHECK` constraints and views do not affect the current analysis, so
-   removing them costs nothing.
+   and indexes. `CHECK` predicates are not modelled, so removing them does not change
+   the imported metadata. Keep any view or materialized view referenced by the query,
+   or supply its relation metadata through a catalog.
 
 Generating a catalog from a live database avoids the question entirely:
 
@@ -100,20 +101,22 @@ sqlsage analyze --query q.sql --database-url "$DATABASE_URL" --schema-name publi
 
 ### ALTER TABLE
 
-Supported actions: `ADD [CONSTRAINT name] PRIMARY KEY | UNIQUE | FOREIGN KEY`,
+Supported actions: `ADD [CONSTRAINT name] PRIMARY KEY | UNIQUE | FOREIGN KEY | CHECK`,
 `ADD [COLUMN] name type ...`, and `ALTER [COLUMN] name SET/DROP NOT NULL`. Several
 actions may be comma-separated in one statement, and `ONLY` and `IF EXISTS` are accepted.
 
 The table must already have been declared by a `CREATE TABLE` earlier in the file, so
 statement order matters exactly as it does for PostgreSQL.
 
-Actions that do not affect the analysis are **rejected rather than ignored**, because
-accepting them silently would imply SQLSage modelled them: `DROP COLUMN`,
-`DROP CONSTRAINT`, `SET DEFAULT`, type changes, and `ADD CHECK`.
+`ADD CHECK` is accepted, but its predicate is not modelled. Other actions are
+**rejected rather than ignored**, including `DROP COLUMN`, `DROP CONSTRAINT`,
+`SET DEFAULT`, and type changes.
 
 ### Real `pg_dump --schema-only` output
 
-A dump parses directly. Statements carrying nothing the analysis reads are skipped:
+Common dumps within the supported DDL subset parse directly. `CREATE INDEX CONCURRENTLY`,
+`CREATE INDEX ... ON ONLY`, and custom index storage options are rejected; use a catalog
+or reduce such DDL before importing. Statements carrying nothing the analysis reads are skipped:
 `SET` parameters other than `search_path`, `SELECT pg_catalog.set_config(...)`,
 `ALTER ... OWNER TO`, `GRANT`/`REVOKE`, `COMMENT ON`, sequences, extensions, types
 (including enums), and functions, procedures and triggers — dollar-quoted bodies and all.
@@ -124,8 +127,9 @@ uses.
 `CHECK` constraints are accepted but their predicates are **not modelled**. A CHECK cannot
 change the column set, keys, indexes or nullability, so skipping it costs nothing.
 
-`GENERATED ALWAYS AS IDENTITY` implies `NOT NULL`; `GENERATED ALWAYS AS (expr) STORED` is
-an ordinary nullable column whose value happens to be computed.
+`GENERATED ALWAYS AS IDENTITY` implies `NOT NULL`; `GENERATED ALWAYS AS (expr) STORED`
+retains its declared nullability, and its expression is not modelled. Virtual generated
+columns are rejected.
 
 The `\restrict` and `\unrestrict` psql meta-commands recent `pg_dump` versions wrap
 every dump in are skipped too. `\i` and `\ir` are not: they pull in another file, and
