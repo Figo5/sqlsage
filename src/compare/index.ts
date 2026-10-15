@@ -19,7 +19,7 @@ export type ComparisonVerdictKind =
 export interface PlanComparison {
   before: SideSummary;
   after: SideSummary;
-  /** Whether both captures describe the same statement, when both state one. */
+  /** Conservative SQL text identity; unknown when SQL is absent or quoting is ambiguous. */
   sameQuery: 'same' | 'different' | 'unknown';
   timing: {
     comparable: boolean;
@@ -100,8 +100,10 @@ function difference(before: string[], after: string[]): { gained: string[]; lost
 }
 
 export function comparePlans(before: PlanEvidence, after: PlanEvidence): PlanComparison {
-  const sameQuery: PlanComparison['sameQuery'] = before.sql && after.sql
-    ? (normalize(before.sql) === normalize(after.sql) ? 'same' : 'different')
+  const beforeQuery = before.sql ? normalize(before.sql) : undefined;
+  const afterQuery = after.sql ? normalize(after.sql) : undefined;
+  const sameQuery: PlanComparison['sameQuery'] = beforeQuery !== undefined && afterQuery !== undefined
+    ? (beforeQuery === afterQuery ? 'same' : 'different')
     : 'unknown';
 
   // Access paths are keyed by relation, which is what a reader is actually asking
@@ -147,8 +149,97 @@ export function comparePlans(before: PlanEvidence, after: PlanEvidence): PlanCom
   };
 }
 
-function normalize(sql: string): string {
-  return sql.trim().replace(/;\s*$/, '').replace(/\s+/g, ' ').toLowerCase();
+function normalize(sql: string): string | undefined {
+  // An AST can discard literal spelling (including large-number precision).
+  // Fold only ASCII case and whitespace outside protected SQL text. Keep token
+  // adjacency: U&'x' and U & 'x', for example, have different meanings.
+  sql = sql.replace(/^[ \t\r\n\f]+|[ \t\r\n\f]+$/g, '');
+  if (!sql) return undefined;
+  const parts: Array<[string, string]> = [];
+  let plain = '';
+  let previousWasString = false;
+  const flush = () => {
+    if (plain) parts.push(['sql', plain]);
+    plain = '';
+  };
+  const identifierChar = (char: string | undefined) => !!char && /[a-zA-Z0-9_$\u0080-\uffff]/.test(char);
+
+  for (let i = 0; i < sql.length;) {
+    const char = sql[i];
+    // PostgreSQL versions disagree on whether a vertical tab is whitespace.
+    if (char === '\v') return undefined;
+    if (/[ \t\r\n\f]/.test(char)) {
+      plain += ' ';
+      do { i++; } while (i < sql.length && /[ \t\r\n\f]/.test(sql[i]));
+      continue;
+    }
+    if (sql.startsWith('--', i)) {
+      const start = i;
+      while (i < sql.length && sql[i] !== '\n' && sql[i] !== '\r') i++;
+      flush();
+      parts.push(['comment', sql.slice(start, i)]);
+      continue;
+    }
+    if (sql.startsWith('/*', i)) {
+      const start = i;
+      let depth = 1;
+      i += 2;
+      while (i < sql.length && depth) {
+        if (sql.startsWith('/*', i)) { depth++; i += 2; }
+        else if (sql.startsWith('*/', i)) { depth--; i += 2; }
+        else i++;
+      }
+      if (depth) return undefined;
+      flush();
+      parts.push(['comment', sql.slice(start, i)]);
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      if (char === "'" && previousWasString) {
+        // Newlines between successive literals are significant in PostgreSQL.
+        return undefined;
+      }
+      const start = i++;
+      const escaped = char === "'" && /[eE]/.test(sql[start - 1] ?? '') && !identifierChar(sql[start - 2]);
+      let closed = false;
+      while (i < sql.length) {
+        if (sql[i] === '\\' && char === "'") {
+          // Ordinary-string backslashes depend on standard_conforming_strings.
+          if (!escaped) return undefined;
+          i += 2;
+        } else if (sql[i] === char) {
+          i++;
+          if (sql[i] === char) i++;
+          else { closed = true; break; }
+        } else i++;
+      }
+      if (!closed) return undefined;
+      flush();
+      parts.push(['quoted', sql.slice(start, i)]);
+      previousWasString = char === "'";
+      continue;
+    }
+    if (char === '$' && !identifierChar(sql[i - 1])) {
+      const delimiter = sql.slice(i).match(/^\$(?:[a-zA-Z_\u0080-\uffff][a-zA-Z0-9_\u0080-\uffff]*)?\$/)?.[0];
+      if (delimiter) {
+        const end = sql.indexOf(delimiter, i + delimiter.length);
+        if (end < 0) return undefined;
+        flush();
+        parts.push(['quoted', sql.slice(i, end + delimiter.length)]);
+        i = end + delimiter.length;
+        previousWasString = true;
+        continue;
+      }
+    }
+    plain += /[A-Z]/.test(char) ? char.toLowerCase() : char;
+    previousWasString = false;
+    i++;
+  }
+  // A final terminator is optional. Never remove a semicolon from quoted text
+  // or a comment, or discard earlier statements in a multi-statement capture.
+  plain = plain.replace(/;$/, '');
+  flush();
+  return JSON.stringify(parts);
 }
 
 function compareTiming(before: PlanEvidence, after: PlanEvidence): PlanComparison['timing'] {
@@ -253,7 +344,7 @@ export function renderComparison(comparison: PlanComparison, format: 'text' | 'm
   out.push(`- before: ${comparison.before.source} ${comparison.before.mode === 'analyzed' ? 'EXPLAIN ANALYZE' : 'plan-only EXPLAIN'}${comparison.before.executionMs !== undefined ? `, ${fmtMs(comparison.before.executionMs)}` : ''}`);
   out.push(`- after:  ${comparison.after.source} ${comparison.after.mode === 'analyzed' ? 'EXPLAIN ANALYZE' : 'plan-only EXPLAIN'}${comparison.after.executionMs !== undefined ? `, ${fmtMs(comparison.after.executionMs)}` : ''}`);
   if (comparison.sameQuery === 'unknown') {
-    out.push('- statement: not stated by these captures, so SQLSage cannot confirm both describe the same query');
+    out.push('- statement: SQLSage cannot confirm whether these captures describe the same query');
   } else {
     out.push(`- statement: ${comparison.sameQuery === 'same' ? 'identical in both captures' : 'DIFFERENT between the captures'}`);
   }
