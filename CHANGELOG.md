@@ -2,6 +2,26 @@
 
 All notable changes to SQLSage are documented here.
 
+## 0.2.2 — 2026-10-15
+
+### Added
+
+- New antipattern detections: `col = NULL` / `col <> NULL` with a rewrite to
+  `IS [NOT] NULL`; `count(col)` over a nullable outer-joined column; cross-type
+  join keys; `UNION` where `UNION ALL` is safe (disjoint arms); and redundant
+  `GROUP BY` where a key is pinned to one value by `WHERE`.
+- `LIMIT` without a total `ORDER BY` is now promoted from an explain caveat to a
+  finding.
+
+### Fixed
+
+- **compare**: protected SQL text is preserved when matching captured queries, so
+  query identity holds across comparisons.
+
+### Docs
+
+- Reconciled the documented supported schema inputs with the implementation.
+
 ## 0.2.1 — 2026-08-03
 
 ### Fixed
