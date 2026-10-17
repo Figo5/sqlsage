@@ -1,0 +1,127 @@
+SQLSage demo — analyzing the bundled example q05-not-in-nullable: Customers with no events, via NOT IN on a nullable column
+No database, no catalog, and no files of your own are involved.
+
+SELECT c.customer_id, c.email
+FROM shop.customers c
+WHERE c.customer_id NOT IN (
+    SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout'
+);
+
+────────────────────────────────────────────────────────────────────────
+
+# SQLSage analysis
+
+*Correctness risk: returns one row per qualifying `customer` row, but one NULL in the excluded subquery makes every otherwise-unmatched comparison unknown and can empty the result.*
+
+> ## WRONG RESULTS
+>
+> This query returns wrong answers today. Fix that before you spend a minute on its speed.
+
+**Nullable NOT IN subquery can invalidate anti-membership.** SQL NOT IN becomes UNKNOWN for every otherwise-unmatched outer row if this subquery emits even one NULL.
+
+**Result grain.** One row per qualifying `customer` row.
+
+## Do this first
+
+1. **Use NULL-safe NOT EXISTS anti-membership and create `idx_sqlsage_events_btree_customer_id_where_event_type_52972e20`** — SQL NOT IN becomes UNKNOWN for every otherwise-unmatched outer row if this subquery emits even one NULL. *(coupled rewrite + index · changes results)*
+
+---
+
+## Original SQL
+
+```sql
+SELECT c.customer_id, c.email
+FROM shop.customers c
+WHERE c.customer_id NOT IN (
+    SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout'
+);
+```
+
+---
+
+## 1. Nullable NOT IN subquery can invalidate anti-membership  `correctness` `critical` `high confidence`
+
+```sql
+c.customer_id NOT IN ( SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout' )
+```
+
+_in `events.customer_id`_
+
+SQL NOT IN becomes UNKNOWN for every otherwise-unmatched outer row if this subquery emits even one NULL. Catalog statistics report 14.5% NULL overall (about 725,170 of 5,000,022 rows) for events.customer_id. Because the IR cannot prove that the subquery filters every NULL out, the returned population is not trustworthy.
+
+> **Does not apply if:** NOT IN is safe only when the outer comparison value and every value produced by the subquery are both proven non-NULL; filtering NULL inside the subquery preserves semantics but may not produce the same plan as NOT EXISTS.
+
+### Fix — Use NULL-safe NOT EXISTS anti-membership  `changes results` `priority 1`
+
+The original NOT IN can become UNKNOWN for every otherwise-unmatched row after one NULL. Correlated NOT EXISTS tests actual equality and is not poisoned by unrelated NULL subquery outputs.
+
+```sql
+SELECT c.customer_id, c.email
+FROM "shop"."customers" AS "c"
+WHERE (NOT EXISTS (SELECT 1 FROM "shop"."events" AS "e" WHERE e.event_type = 'checkout' AND "e"."customer_id" = "c"."customer_id"));
+```
+
+> **Returns different rows:** This intentionally repairs the original wrong-result behavior when the subquery can emit NULL; it can return outer rows that NOT IN incorrectly suppresses. Review that corrected population as a correctness change. An attached correctness finding explains why changing the current rows is the repair; validate the repaired rows against business intent or an independent oracle.
+
+> **Expected effect (upstream):** No comparable speedup is claimed because the result population intentionally changes. The optional partial index can support the corrected anti-join after semantics are fixed.
+
+> **Required companion index:** `idx-events-btree-customer-id-where-event-type-checkout-and-customer-id-is-not-n-ec75bbca` is present in this change set. Deploy and verify the complete set; no component inherits a measured benefit on its own.
+
+### Index (required dependency) — events (customer_id) WHERE event_type = 'checkout' AND "customer_id" IS NOT…  `required dependency` `id idx-events-btree-customer-id-where-event-type-checkout-and-customer-id-is-not-n-ec75bbca` `priority 1` `high confidence`
+
+Predicted/unverified: this index does not repair or accelerate the current wrong NOT IN semantics. After the M6 NOT EXISTS correctness rewrite, it can provide a compact non-NULL anti-join input.
+
+```sql
+CREATE INDEX CONCURRENTLY idx_sqlsage_events_btree_customer_id_where_event_type_52972e20 ON "shop"."events" ("customer_id") WHERE event_type = 'checkout' AND "customer_id" IS NOT NULL;
+```
+
+> **Before you run it:** `CONCURRENTLY` cannot run inside a transaction block (no `BEGIN`, and many migration tools wrap statements by default). It performs two table scans, can wait on old transactions, and if it fails it leaves an `INVALID` index behind that you must `DROP INDEX` before retrying.
+
+> **Why this column order:** Fixed subquery filters and NULL exclusion belong in the partial predicate; customer_id is the correlated anti-join equality key.
+
+> **What it costs:** Size is unmeasured. A full definition can store up to one entry per row across about 5,000,022 catalog-estimated rows. The partial predicate limits entries to rows satisfying event_type = 'checkout' AND "customer_id" IS NOT NULL; its exact size is not measured. Eligible inserts and rows entering/leaving the partial predicate plus updates to customer_id require index maintenance. Validate this rewrite-coupled partial anti-join index against workload frequency before deployment.
+
+> **Serves:** The M6 NOT EXISTS correlation on e.customer_id; e.event_type = 'checkout'
+
+## What this query does
+
+One row per qualifying `customer` row.
+
+- **Start with `customers` (`c`)** — Begin with rows produced by the table `customers`, named `c` in this query.
+- **Apply the exclusion test** — Build the values returned by the nested query, then keep an outer row only when comparison with every value is true. If the nested values contain NULL, a nonmatching row becomes unknown rather than true and is removed.
+  - `c.customer_id NOT IN ( SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout' )`
+
+- `customer_id` — The `customer_id` value from `customers`.
+- `email` — The `email` value from `customers`.
+
+> **No output order is promised:** Without an explicit final ordering, consumers must not rely on the order rows happen to be returned in.
+
+## Predicted execution and scaling
+
+**Predicted plan shape.** `c` seq scan (Offline prediction: no existing leading-key access path can evaluate `c.customer_id NOT…); `e (sub:1)` seq scan ~93,334 rows (Offline prediction: the row conditions are structurally seekable in isolation, but no…); joins: 1× unknown.
+
+- **Predicted cost driver** — Read and test events: Offline prediction: the likely sequential path must inspect approximately 5,000,022 rows. Output limits do not avoid this work unless another access path can produce qualifying rows in order.
+- **Predicted cost driver** — Read and test customers: Offline prediction: the likely sequential path must inspect approximately 200,000 rows and evaluate row-level expressions that lack a usable seek condition. Output limits do not avoid this work unless another access path can produce qualifying rows in order.
+
+**Scaling.** Offline prediction: Work grows linearly with all rows read from `customers`, even when few rows qualify. Live EXPLAIN is required to calibrate constants, parallelism, cache behavior, and any spill. (O(N_read))
+
+- Row estimate at c row conditions is likely **unreliable** — `c.customer_id NOT IN ( SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout' )` lacks a complete selectivity estimate in the exported catalog. Expression, date-range, JSON, LIKE, and correlated-subquery distributions require expression/histogram or multivariate statistics that are not present.
+- Row estimate at outer rows after `c.customer_id NOT IN ( SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout' )` is likely **unreliable** — The catalog gives overall nullability but not whether NULL occurs inside the filtered subquery population. One qualifying NULL can change the outer result from many rows to zero, so a percentage estimate is not trustworthy.
+
+## How far to trust this
+
+- Schema and statistics from `shop`.
+- Live verification was not supplied/run: plan changes, speedups, and result equivalence are unverified.
+- Execution paths, row counts, runtime shares, and scaling notes in this report are analyzer predictions unless a finding explicitly cites observed plan evidence.
+
+
+────────────────────────────────────────────────────────────────────────
+That report came from the query and schema alone — no query was executed.
+
+Now try your own:
+  sqlsage analyze --sql "SELECT ..." --catalog catalog.json
+  sqlsage analyze --query slow.sql --schema schema.sql
+  sqlsage analyze --query slow.sql --plan plan.json
+
+No catalog yet?  sqlsage doctor --database-url "$DATABASE_URL"
+More examples:    sqlsage list

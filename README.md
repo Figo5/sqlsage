@@ -17,6 +17,41 @@ SQLSage is a command-line PostgreSQL query explainer and optimizer. Give it a
 
 SQLSage can run completely offline. A database connection is optional.
 
+## See the problem it catches
+
+A query can run successfully and still return the wrong population:
+
+```sql
+SELECT c.customer_id, c.email
+FROM shop.customers c
+WHERE c.customer_id NOT IN (
+  SELECT e.customer_id FROM shop.events e WHERE e.event_type = 'checkout'
+);
+```
+
+If the subquery emits a `NULL`, otherwise-unmatched customers disappear from
+the result. Run the bundled example with **Node.js 22.18+**:
+
+```sh
+npx sqlsage demo
+```
+
+Excerpt captured from SQLSage 0.2.2 (line-wrapped for readability; [full output](docs/demo-output.txt)):
+
+```text
+Nullable NOT IN subquery can invalidate anti-membership.
+SQL NOT IN becomes UNKNOWN for every otherwise-unmatched outer row if this
+subquery emits even one NULL.
+```
+
+The report proposes a `NOT EXISTS` repair and marks it **changes results**.
+You review the intended population before applying anything. This offline demo
+executes no query and establishes no speedup.
+
+[Walk through the query and proposed repair](docs/tutorials/01-wrong-results-not-in.md)
+· [See supported inputs](docs/SUPPORTED.md)
+· [Tell us what helped or missed on your query](https://github.com/Figo5/sqlsage/issues/2)
+
 ## Install
 
 Requirements: Node.js 22.18 or newer (Node 22 LTS and Node 24 are both tested in CI) and npm.
