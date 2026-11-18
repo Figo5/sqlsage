@@ -38,6 +38,7 @@
   },
   "scripts": {
     "build": "esbuild src/cli.ts src/index.ts --bundle --platform=node --packages=external --format=esm --target=node22 --outdir=dist",
+    "build:playground": "node playground/build.mjs",
     "prepack": "npm run build",
     "sqlsage": "node src/cli.ts",
     "explain": "node src/cli.ts",
