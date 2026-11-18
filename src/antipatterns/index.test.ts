@@ -647,3 +647,40 @@ test('UNION with disjoint arms is eligible for UNION ALL; overlapping arms get i
     /union-all-eligible/,
   );
 });
+
+test('ORDER BY random() with LIMIT is flagged; without LIMIT or without random() it is not', () => {
+  const flagged = findings('SELECT order_id FROM shop.orders ORDER BY random() LIMIT 10');
+  const random = flagged.find((finding) => finding.id === 'order-by-random-limit');
+  assert.ok(random, 'random()+LIMIT should be flagged');
+  assert.equal(random.severity, 'medium', 'a multi-million-row input is medium severity');
+
+  assert.ok(
+    !ids('SELECT order_id FROM shop.orders ORDER BY random()').includes('order-by-random-limit'),
+    'random() without LIMIT is not flagged',
+  );
+  assert.ok(
+    !ids('SELECT order_id FROM shop.orders ORDER BY created_at LIMIT 10').includes('order-by-random-limit'),
+    'LIMIT without random() is not flagged',
+  );
+});
+
+test('counting a subquery to test existence is flagged; a real count or a count > n is not', () => {
+  const base = 'SELECT customer_id FROM shop.customers c WHERE';
+  const sub = '(SELECT count(*) FROM shop.orders o WHERE o.customer_id = c.customer_id)';
+
+  for (const comparison of [`${sub} > 0`, `${sub} = 0`, `0 < ${sub}`]) {
+    assert.ok(
+      ids(`${base} ${comparison}`).includes('count-for-existence'),
+      `existence comparison should be flagged: ${comparison}`,
+    );
+  }
+
+  assert.ok(
+    !ids(`${base} ${sub} > 5`).includes('count-for-existence'),
+    'comparing the count with a value other than 0/1 is not an existence test',
+  );
+  assert.ok(
+    !ids(`SELECT c.customer_id, ${sub} AS n FROM shop.customers c`).includes('count-for-existence'),
+    'a count used as a projected value is not flagged',
+  );
+});

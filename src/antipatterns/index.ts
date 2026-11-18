@@ -97,6 +97,8 @@ export function detectAntiPatterns(ir: QueryIR, catalog: Catalog): Finding[] {
   detectDistinctAggregates(ir, catalog, sink);
   detectUnionAllEligible(ir, catalog, sink);
   detectRedundantGroupBy(ir, catalog, sink);
+  detectOrderByRandomLimit(ir, catalog, sink);
+  detectCountForExistence(ir, catalog, sink);
 
   return sink.findings.sort((a, b) =>
     SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
@@ -1396,4 +1398,99 @@ function refForIdentifier(predicate: Predicate, identifier: string): ResolvedCol
   return predicate.columns.find((ref) =>
     ref.column.toLowerCase() === column && (!alias || ref.alias?.toLowerCase() === alias),
   );
+}
+
+/**
+ * Detect `ORDER BY random() ... LIMIT n`. PostgreSQL must assign a random sort
+ * key to every row that survives the filters and sort the whole set to return
+ * a handful of rows, so the cost tracks the surviving input, not the LIMIT.
+ */
+function detectOrderByRandomLimit(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  for (const block of ir.blocks) {
+    if (block.limit === undefined) continue;
+    const randomOrder = block.orderBy.find((item) => /\brandom\s*\(\s*\)/i.test(item.sql));
+    if (!randomOrder) continue;
+
+    const largest = largestRelation(block, catalog);
+    const rowCount = largest?.rowCount;
+    const order = block.orderBy.map((item) => `${item.sql} ${item.direction.toUpperCase()}`).join(', ');
+
+    addFinding(sink, {
+      id: 'order-by-random-limit',
+      title: 'ORDER BY random() with LIMIT sorts the whole input to return a few rows',
+      severity: rowCount !== undefined && rowCount >= 1_000_000 ? 'medium' : rowCount === undefined || rowCount >= 100_000 ? 'low' : 'info',
+      category: 'performance',
+      actionability: 'optional',
+      evidence: {
+        sqlFragment: `ORDER BY ${order} LIMIT ${block.limit}`,
+        relation: largest?.name,
+      },
+      impact:
+        `ORDER BY random() assigns a random key to every row that survives the filters and sorts them all, even though only ${block.limit} row${block.limit === 1 ? '' : 's'} are returned.` +
+        (rowCount !== undefined ? ` ${largest?.name} has about ${formatRows(rowCount)} catalog-estimated rows that would each be keyed and sorted.` : '') +
+        ' The cost is driven by the surviving input size, not by the LIMIT.',
+      remediation:
+        'When exact uniform randomness is not required, sample before sorting: TABLESAMPLE SYSTEM/BERNOULLI for an approximate fraction, or draw from a random key range on an indexed column, then LIMIT.',
+      caveat:
+        'ORDER BY random() is exactly uniform and is fine on a small input or after a selective filter. The alternatives change the sampling distribution, so adopt them only when approximate sampling is acceptable.',
+      confidence: 'high',
+    });
+  }
+}
+
+/**
+ * Detect a scalar `count(...)` subquery compared against 0 or 1 purely to test
+ * existence — `(SELECT count(*) ...) > 0`, `>= 1`, `<> 0`, `= 0`, `0 < (...)`.
+ * The subquery counts every matching row when only existence is asked, which
+ * EXISTS / NOT EXISTS answers by stopping at the first row.
+ *
+ * Fires only when a referenced subquery block actually aggregates with COUNT
+ * and the comparison literal is exactly 0 or 1, so `count(...) > 5` and a count
+ * used as a projected value are left alone.
+ */
+function detectCountForExistence(ir: QueryIR, catalog: Catalog, sink: FindingSink): void {
+  const blockById = new Map(ir.blocks.map((candidate) => [candidate.id, candidate]));
+  for (const block of ir.blocks) {
+    for (const predicate of block.predicates) {
+      const subIds = predicate.subqueryBlockIds;
+      if (!subIds || subIds.length === 0) continue;
+
+      const countSub = subIds
+        .map((id) => blockById.get(id))
+        .find((sub) => sub?.aggregates.some((aggregate) => aggregate.func.toLowerCase() === 'count'));
+      if (!countSub) continue;
+
+      // Existence comparison against a literal 0 or 1 only. The lookbehind/ahead
+      // guards keep `> 50` and `>= 10` out (the digit is part of a longer number).
+      const rightLiteral = /(?:>=\s*1|>\s*0|<>\s*0|!=\s*0|=\s*0|<\s*1)(?![\d.])/.test(predicate.sql);
+      const leftLiteral = /(?<![\d.])(?:0\s*(?:<(?!=)|<>|!=|=)|1\s*<=)/.test(predicate.sql);
+      if (!rightLiteral && !leftLiteral) continue;
+
+      const notExists = /=\s*0(?![\d.])/.test(predicate.sql) || /(?<![\d.])0\s*=/.test(predicate.sql);
+      const largest = largestRelation(countSub, catalog);
+
+      addFinding(sink, {
+        id: 'count-for-existence',
+        title: 'Counting a subquery to test existence does more work than EXISTS',
+        severity: 'low',
+        category: 'performance',
+        actionability: 'optional',
+        evidence: {
+          sqlFragment: predicate.sql,
+          relation: largest?.name,
+        },
+        impact:
+          `${predicate.sql} counts every matching row in the subquery when only existence is being tested.` +
+          (largest?.rowCount !== undefined ? ` The counted relation ${largest.name} has about ${formatRows(largest.rowCount)} catalog-estimated rows.` : '') +
+          ' EXISTS can stop at the first matching row, while count must reach all of them.',
+        remediation:
+          notExists
+            ? 'Rewrite the existence test as NOT EXISTS (same subquery without the aggregate); it can stop at the first row instead of counting them all.'
+            : 'Rewrite the existence test as EXISTS (same subquery without the aggregate); it can stop at the first row instead of counting them all.',
+        caveat:
+          'The rewrite is equivalent only for the existence comparison. Keep the count when its value is used elsewhere, and note a correlated EXISTS still depends on a usable index on the join key.',
+        confidence: 'high',
+      });
+    }
+  }
 }

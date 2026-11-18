@@ -2,6 +2,15 @@
 
 All notable changes to SQLSage are documented here.
 
+## 0.3.0 — 2026-11-18
+
+### Added
+
+- New antipattern detections: `ORDER BY random()` combined with `LIMIT`, which
+  sorts the whole surviving input to return a few rows; and counting a scalar
+  subquery purely to test existence (`(SELECT count(*) ...) > 0`, `= 0`,
+  `0 < (...)`), which `EXISTS` / `NOT EXISTS` answers without counting every row.
+
 ## 0.2.2 — 2026-10-15
 
 ### Added
