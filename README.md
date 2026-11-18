@@ -17,6 +17,9 @@ SQLSage is a command-line PostgreSQL query explainer and optimizer. Give it a
 
 SQLSage can run completely offline. A database connection is optional.
 
+**Try it in your browser:** the [SQLSage playground](https://gfiore.com/sqlsage/) runs the analyzer
+locally against a sample schema. Nothing is sent anywhere.
+
 ## See the problem it catches
 
 A query can run successfully and still return the wrong population:

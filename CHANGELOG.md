@@ -2,6 +2,17 @@
 
 All notable changes to SQLSage are documented here.
 
+## 0.4.0 — 2026-11-18
+
+### Added
+
+- **Plan verdicts.** When a real plan is supplied (`--plan` or connected mode),
+  each performance finding is marked confirmed, contradicted, or not observable
+  by that plan, with a one-line note stating the observed fact (for example,
+  "Plan reads orders with a Seq Scan."). Correctness findings are unchanged.
+- **Browser playground.** A static page that runs the analyzer entirely in the
+  browser against the bundled sample schema: `npm run build:playground`.
+
 ## 0.3.0 — 2026-11-18
 
 ### Added
