@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Try SQLSage's static PostgreSQL query analyzer against a bundled sample schema. Runs entirely in your browser.">
+  <title>SQLSage Playground</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <p class="eyebrow">SQLSage</p>
+      <h1>PostgreSQL query analyzer playground</h1>
+      <p class="note">Runs entirely in your browser against a bundled sample schema (shop.*). Nothing is sent anywhere.</p>
+    </header>
+
+    <section class="panel" aria-labelledby="query-heading">
+      <div class="panel-head">
+        <h2 id="query-heading">Query</h2>
+        <div class="example-field">
+          <label for="example">Examples</label>
+          <select id="example"></select>
+        </div>
+      </div>
+
+      <label class="sr-only" for="sql">SQL query</label>
+      <textarea id="sql" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="SELECT ..."></textarea>
+
+      <div class="actions">
+        <button id="analyze" type="button">Analyze</button>
+        <span class="hint">Ctrl/Cmd + Enter</span>
+      </div>
+    </section>
+
+    <section class="results" aria-labelledby="findings-heading">
+      <div class="section-head">
+        <h2 id="findings-heading">Findings</h2>
+        <p id="summary" class="summary" aria-live="polite"></p>
+      </div>
+      <div id="messages" class="messages" role="status" aria-live="polite"></div>
+      <div id="findings" class="findings"></div>
+    </section>
+
+    <details id="schema-panel" class="schema-panel">
+      <summary>
+        <span>Sample schema</span>
+        <span class="summary-note">tables and columns you can query</span>
+      </summary>
+      <div id="schema" class="schema-body"></div>
+    </details>
+
+    <footer class="footnote">
+      <p>Static analysis only. SQLSage reports shapes it can prove from the catalog; it does not execute the query or promise a speedup.</p>
+    </footer>
+  </main>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
