@@ -83,6 +83,16 @@ function clip(s: unknown, max: number): string {
   return t.length <= max ? t : t.slice(0, max - 1).replace(/[\s,;:(]+\S*$/, '') + '…';
 }
 
+/**
+ * The finding line's plan suffix. Only findings that carry a verdict get one, so
+ * reports built from catalog-only analysis are byte-for-byte unchanged.
+ */
+function planSuffix(finding: Finding | undefined): string {
+  const verdict = finding?.planVerdict;
+  if (!verdict) return '';
+  return ` — plan: ${verdict.status} (${oneLine(verdict.note)})`;
+}
+
 function firstSentence(s: unknown, max = 160): string {
   const t = oneLine(s);
   if (!t) return '';
@@ -375,7 +385,7 @@ function composeBlocks(m: ReportModel, analysis: Analysis | undefined, maxAction
     push({
       kind: 'list',
       items: m.cleared.map(({ finding, followUps }) => ({
-        text: `**${oneLine(finding.title)}** — ${oneLine(finding.impact)}`,
+        text: `**${oneLine(finding.title)}** — ${oneLine(finding.impact)}${planSuffix(finding)}`,
         sub: [
           ...(finding.caveat ? [`Would change if: ${oneLine(finding.caveat)}`] : []),
           ...(finding.evidence?.sqlFragment ? [`\`${clip(finding.evidence.sqlFragment, 100)}\``] : []),
@@ -394,7 +404,7 @@ function composeBlocks(m: ReportModel, analysis: Analysis | undefined, maxAction
       text: '_These are not part of the recommended fix. Adopt them only if their local readability or maintenance benefit is worth the stated trade-off._',
     });
     for (const issue of m.optional) {
-      push({ kind: 'heading', level: 3, text: oneLine(issue.title) });
+      push({ kind: 'heading', level: 3, text: `${oneLine(issue.title)}${planSuffix(issue.findings[0])}` });
       const lead = issue.findings[0];
       if (lead?.impact) push({ kind: 'para', text: oneLine(lead.impact) });
       fixBlocks(issue, true).forEach(push);
@@ -414,7 +424,7 @@ function composeBlocks(m: ReportModel, analysis: Analysis | undefined, maxAction
     push({
       kind: 'list',
       items: m.deferred.map((f) => ({
-        text: `${oneLine(f.title)} — ${clip(f.impact, 180)}`,
+        text: `${oneLine(f.title)} — ${clip(f.impact, 180)}${planSuffix(f)}`,
         tone: 'muted',
       })),
     });
@@ -453,7 +463,7 @@ function issueBlocks(issue: Issue, n: number): Block[] {
   const out: Block[] = [];
   const lead = issue.findings[0];
 
-  out.push({ kind: 'heading', level: 2, text: `${n}. ${oneLine(issue.title)}`, badges: badgesFor(issue) });
+  out.push({ kind: 'heading', level: 2, text: `${n}. ${oneLine(issue.title)}${planSuffix(lead)}`, badges: badgesFor(issue) });
 
   // Evidence first: the reader should see the offending SQL before the argument.
   const frag = oneLine(lead?.evidence?.sqlFragment);
@@ -487,7 +497,7 @@ function issueBlocks(issue: Issue, n: number): Block[] {
     out.push({
       kind: 'list',
       items: others.map((f) => ({
-        text: `**${oneLine(f.title)}** (${f.severity}, ${f.confidence} confidence) — ${oneLine(f.impact)}`,
+        text: `**${oneLine(f.title)}** (${f.severity}, ${f.confidence} confidence) — ${oneLine(f.impact)}${planSuffix(f)}`,
         sub: [
           ...(f.evidence?.sqlFragment ? [`\`${clip(f.evidence.sqlFragment, 100)}\``] : []),
           ...(f.caveat ? [`Does not apply if: ${oneLine(f.caveat)}`] : []),

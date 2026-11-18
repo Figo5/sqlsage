@@ -387,6 +387,15 @@ export interface Finding {
   /** False-positive guard: when this finding would NOT apply. */
   caveat?: string;
   confidence: 'high' | 'medium' | 'low';
+  /**
+   * What a captured PostgreSQL plan says about this finding. Present only when
+   * plan evidence was supplied and this finding is a performance claim the plan
+   * can speak to; absent means no plan was observed.
+   */
+  planVerdict?: {
+    status: 'confirmed' | 'contradicted' | 'not-observable';
+    note: string;
+  };
 }
 
 // ===========================================================================

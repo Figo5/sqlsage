@@ -15,6 +15,7 @@ import { collectLiveEvidence, LiveInputError } from './live.ts';
 import { bundledCatalogPath } from './paths.ts';
 import { applyPlanEvidence, loadPlanEvidence, normalizePlanEvidence, PlanInputError } from './plan-evidence.ts';
 import type { PlanEvidence } from './plan-evidence.ts';
+import { applyPlanVerdicts } from './plan-verdicts.ts';
 import { comparePlans, renderComparison } from './compare/index.ts';
 import { runDoctorChecks, renderDoctorReport } from './doctor.ts';
 import { buildModel, renderReport } from './report/index.ts';
@@ -144,7 +145,14 @@ function withPlan(
   result: ReturnType<typeof analyze>,
   plan: PlanEvidence,
 ): ReturnType<typeof analyze> {
-  return { ...result, analysis: applyPlanEvidence(result.analysis, plan) };
+  const analysis = applyPlanEvidence(result.analysis, plan);
+  return {
+    ...result,
+    analysis: {
+      ...analysis,
+      findings: applyPlanVerdicts(analysis.findings, plan),
+    },
+  };
 }
 
 function jsonOutput(result: ReturnType<typeof analyze>, context: AnalysisContext): string {
